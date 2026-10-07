@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Epochenkrieg</title>
+    <meta name="description" content="Zwei-Spieler-Strategiespiel: Führe deine Armee durch sechs Zeitalter und zerstöre die gegnerische Basis." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Russo+One&display=swap" rel="stylesheet" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #05060d;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+      canvas {
+        display: block;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #rotate {
+        display: none;
+        position: fixed;
+        inset: 0;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 24px;
+        background: #05060d;
+        color: #f4f1e8;
+        font: 20px 'Russo One', 'Trebuchet MS', sans-serif;
+      }
+      @media (orientation: portrait) and (pointer: coarse) {
+        #rotate {
+          display: flex;
+        }
+      }
+      noscript {
+        color: #eee;
+        font: 16px sans-serif;
+        display: block;
+        padding: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game" aria-label="Epochenkrieg Spielfeld"></canvas>
+    <div id="rotate">Bitte das Gerät ins Querformat drehen ↻</div>
+    <noscript>Dieses Spiel benötigt JavaScript.</noscript>
+    <script src="src/data.js"></script>
+    <script src="src/sim.js"></script>
+    <script src="src/ai.js"></script>
+    <script src="src/sprites.js"></script>
+    <script src="src/render.js"></script>
+    <script src="src/hud.js"></script>
+    <script src="src/ui.js"></script>
+    <script src="src/audio.js"></script>
+    <script src="src/input.js"></script>
+    <script src="src/main.js"></script>
+  </body>
+</html>
