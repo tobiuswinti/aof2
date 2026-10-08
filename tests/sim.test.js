@@ -180,3 +180,19 @@ test('Ungültiger Spielstand wird abgelehnt', () => {
   assert.throws(() => sim.deserialize('{"players":[]}'));
   assert.throws(() => sim.deserialize('kein json'));
 });
+
+test('Inkonsistente Spielstände werden beim Laden abgelehnt', () => {
+  const s = sim.createGame({ seed: 3 });
+  run(s, 3);
+  const ok = sim.serialize(s);
+  assert.doesNotThrow(() => sim.deserialize(ok));
+  const broken = (mut) => {
+    const o = JSON.parse(ok);
+    mut(o);
+    return JSON.stringify(o);
+  };
+  assert.throws(() => sim.deserialize(broken((o) => (o.over = true))), /Sieger/, 'Spielende ohne Sieger');
+  assert.throws(() => sim.deserialize(broken((o) => (o.players[0].age = 9))), /Spieler/, 'Zeitalter außerhalb');
+  assert.throws(() => sim.deserialize(broken((o) => (o.players[1].gold = null))), /Werte/, 'Gold fehlt');
+  assert.throws(() => sim.deserialize(broken((o) => (o.players[0].turrets = []))), /Türme/, 'keine Turmplätze');
+});

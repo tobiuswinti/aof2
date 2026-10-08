@@ -247,8 +247,8 @@
       const listH = this.listHeight(items);
       const y0 = area.top + Math.max(6, (area.h - (66 + 168 + 34 + listH)) / 2);
       const w = s.winner;
-      const T = S.TEAM[w];
-      this.title(`${opts.names[w]} GEWINNT!`, y0 + 52, 54, T.light);
+      const T = S.TEAM[w] || S.TEAM[0];
+      this.title(w === 0 || w === 1 ? `${opts.names[w]} GEWINNT!` : 'SPIELENDE', y0 + 52, 54, T.light);
       const ty = y0 + 66;
       ctx.fillStyle = 'rgba(20,23,42,0.9)';
       S.rrect(ctx, W / 2 - 320, ty, 640, 160, 14);

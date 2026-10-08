@@ -61,8 +61,12 @@
     pressed: null,
     quality: 0, // 0 = volle Qualität … 3 = sparsamste Darstellung
   };
+  // Nur echte Stufen akzeptieren (z. B. kein 'constructor' aus manipuliertem Speicher).
+  function validLevel(l) {
+    return typeof l === 'string' && Object.prototype.hasOwnProperty.call(EK.ai.LEVELS, l);
+  }
   const savedLevel = load('ek-level');
-  if (savedLevel && EK.ai.LEVELS[savedLevel]) app.level = savedLevel;
+  if (validLevel(savedLevel)) app.level = savedLevel;
 
   function inMatch() {
     return app.mode === 'play' || app.mode === 'pause' || app.mode === 'over' || (app.mode === 'controls' && app.back === 'pause');
@@ -82,6 +86,7 @@
   }
 
   function startGame(vsAI) {
+    discardSave();
     app.vsAI = vsAI;
     const lvl = EK.ai.LEVELS[app.level];
     app.game = EK.sim.createGame({ seed: (Math.random() * 1e9) | 0, bonus: [1, vsAI ? lvl.bonus : 1] });
@@ -255,7 +260,7 @@
     const keyHints = !app.touch || app.keys;
     return {
       names: app.names,
-      layout: app.touch ? 'touch' : 'desktop',
+      layout: view.big ? 'touch' : 'desktop',
       humans: app.humans,
       canFull: !!document.fullscreenEnabled,
       showKeys: [keyHints && app.humans[0], keyHints && app.humans[1]],
@@ -266,18 +271,22 @@
     };
   }
 
+  // Liefert true, wenn sich dadurch das Layout geändert hat.
   function setTouch(touch) {
-    if (touch === app.touch) return;
+    if (touch === app.touch) return false;
+    const before = view.big;
     app.touch = touch;
     resize();
     hud.relayout(hudOpts());
+    return before !== view.big;
   }
 
   const input = new EK.Input(canvas, {
     unlock: () => sound.unlock(),
     pointer: (type) => {
-      if (type === 'touch' || type === 'pen') setTouch(true);
-      else if (type === 'mouse' && !coarsePointer()) setTouch(false);
+      if (type === 'touch' || type === 'pen') return setTouch(true);
+      if (type === 'mouse' && !coarsePointer()) return setTouch(false);
+      return false;
     },
     keyboard: () => (app.keys = true),
     action: (team, action, fromPad) => doAction(team, action, fromPad ? 'pad' : 'key'),
@@ -296,7 +305,7 @@
         const h = hud.hit(x, y);
         if (!h) return;
         if (h.kind === 'action') doAction(h.team, h.action, type === 'mouse' ? 'mouse' : 'touch');
-        else if (h.id === 'pause') setMode('pause');
+        else if (h.id === 'pause') pauseIfPlaying();
         else if (h.id === 'music') sound.toggleMusic();
         else if (h.id === 'full') fullscreen();
         return;
@@ -308,8 +317,9 @@
     },
     release: (x, y, type, id) => {
       const p = app.pressed;
+      if (!p || p.id !== id) return; // anderer Finger – laufenden Menü-Tipp nicht abbrechen
       app.pressed = null;
-      if (!p || app.mode === 'play' || p.id !== id) return;
+      if (app.mode === 'play') return;
       const h = ui.hit(x, y);
       if (h && h.index === p.index) activate(menuItems()[h.index], h.side);
     },
@@ -319,7 +329,7 @@
         return true;
       }
       if (key === 'escape') {
-        if (app.mode === 'play') setMode('pause');
+        if (app.mode === 'play') pauseIfPlaying();
         else if (app.mode === 'pause') setMode('play');
         else if (app.mode === 'controls') activate({ id: 'back' });
         else if (app.mode === 'over') toMenu();
@@ -344,7 +354,7 @@
   // Spiel auch spielbar bleibt, wenn die App das Drehen des Bildschirms nicht zulässt.
   // Breite Touch-Bildschirme: oben leeren Himmel abschneiden statt seitlicher Balken – so
   // wird alles größer. view.top/view.vh beschreiben den sichtbaren logischen Bereich.
-  const view = { w: 1, h: 1, dpr: 1, scale: 1, offX: 0, offY: 0, rotated: false, flip: false, top: 0, vh: D.H };
+  const view = { w: 1, h: 1, dpr: 1, scale: 1, offX: 0, offY: 0, rotated: false, flip: false, big: false, top: 0, vh: D.H };
 
   function screenPortrait() {
     try {
@@ -363,16 +373,19 @@
     const dpr = Math.min(app.quality >= 3 ? 1 : app.quality >= 1 ? 1.5 : 2, window.devicePixelRatio || 1);
     // Nur echte Handys/Tablets im Hochformat drehen – nicht etwa ein schmales Seitenpanel am Laptop.
     const rotated = coarsePointer() && h > w * 1.05 && screenPortrait();
+    // Große Bedienung (Touch-Layout) bei Touch oder wenn das Fenster sehr klein ist.
+    const big = app.touch || Math.min(w / D.W, h / D.H) < 0.55;
     const inset = app.touch ? 12 : 0; // Abstand zu den Wisch-Gesten am Bildschirmrand
     const lw = (rotated ? h : w) - 2 * inset;
     const lh = (rotated ? w : h) - 2 * inset;
     let vh = D.H;
-    if (app.touch && lw / lh > D.W / D.H) vh = Math.max(560, Math.min(D.H, (D.W * lh) / lw));
+    if (big && lw / lh > D.W / D.H) vh = Math.max(560, Math.min(D.H, (D.W * lh) / lw));
     const scale = Math.min(lw / D.W, lh / vh);
     Object.assign(view, {
       w,
       h,
       dpr,
+      big,
       rotated,
       flip: rotated && app.flip,
       scale,
@@ -464,7 +477,9 @@
   }
 
   function persist() {
-    if (!inMatch() || app.game.over) return;
+    if (!inMatch()) return;
+    // Eine entschiedene Partie darf nicht fortsetzbar bleiben.
+    if (app.game.over) return discardSave();
     try {
       const data = JSON.stringify(snapshot());
       store('ek-save', data);
@@ -504,11 +519,16 @@
     };
   }
 
-  function restore(data) {
+  // applyPrefs: nur beim Live-Update (gleiches Gerät, gleicher Viewer) auch die Drehrichtung
+  // übernehmen; eine lokale Sicherung ändert sie nicht (sie liegt ohnehin in 'ek-flip').
+  function restore(data, applyPrefs) {
     if (!data || typeof data !== 'object') return false;
-    if (data.level && EK.ai.LEVELS[data.level]) app.level = data.level;
-    if (typeof data.flip === 'boolean') app.flip = data.flip;
+    if (applyPrefs && typeof data.flip === 'boolean' && data.flip !== app.flip) {
+      app.flip = data.flip;
+      store('ek-flip', app.flip ? '1' : '0');
+    }
     if (data.v !== STATE_V || typeof data.game !== 'string') return false;
+    if (validLevel(data.level)) app.level = data.level;
     // Probelauf: ein beschädigter oder inkompatibler Stand darf das Spiel nicht einfrieren.
     EK.sim.update(EK.sim.deserialize(data.game), STEP);
     const game = EK.sim.deserialize(data.game);
@@ -526,7 +546,7 @@
   function resumeSaved() {
     let ok = false;
     try {
-      ok = restore(JSON.parse(app.saved));
+      ok = restore(JSON.parse(app.saved), false);
     } catch (e) {
       ok = false;
     }
@@ -540,8 +560,8 @@
   let last = performance.now();
   let acc = 0;
   let demoRestart = 0;
-  let lastDraw = 0;
-  let drawEma = 16.7;
+  let frameEma = 16.7;
+  let frameNo = 0;
   let slowT = 0;
   let saveT = 0;
   let errors = 0;
@@ -553,12 +573,20 @@
       tick(now);
     } catch (e) {
       if (errors++ < 5 && window.console) console.error(e);
+      // Zeichenzustand komplett zurücksetzen (offene save()/clip aus dem fehlerhaften Frame).
+      try {
+        canvas.width = canvas.width;
+      } catch (err) {
+        /* ignorieren */
+      }
     }
   }
 
   function tick(now) {
-    const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
+    const rawMs = now - last;
+    const dt = Math.min(0.1, Math.max(0, rawMs / 1000));
     last = now;
+    if (rawMs > 0 && rawMs < 100) frameEma = frameEma * 0.9 + rawMs * 0.1;
     input.pollGamepads();
 
     const s = app.game;
@@ -580,6 +608,7 @@
     if (app.confirm && now > app.confirm.until) app.confirm = null;
 
     if (app.mode === 'play' && s.over) {
+      if (app.overT === 0) discardSave();
       app.overT += dt;
       if (app.overT > 2.2) setMode('over');
     }
@@ -604,22 +633,22 @@
     else sound.setTheme(Math.max(s.players[0].age, s.players[1].age));
     sound.update();
 
-    // Zeichnen höchstens ~60-mal pro Sekunde (120-Hz-Displays würden sonst doppelt zeichnen)
-    if (now - lastDraw < 14) return;
-    const interval = now - lastDraw;
-    lastDraw = now;
-    if (interval < 100 && !document.hidden) {
-      // Dauerhaft unter ~40 fps: eine Qualitätsstufe herunterschalten. Die letzte Stufe
-      // (Auflösung 1×) erst unter ~25 fps – 30 fps im iOS-Stromsparmodus sind keine Last.
-      drawEma = drawEma * 0.95 + interval * 0.05;
-      slowT = drawEma > (app.quality >= 2 ? 40 : 25) ? slowT + interval : 0;
+    // Dauerhaft niedrige Bildrate: eine Qualitätsstufe herunterschalten. Die letzte Stufe
+    // (Auflösung 1×) erst unter ~25 fps – 30 fps im iOS-Stromsparmodus sind keine Last.
+    if (rawMs < 100 && !document.hidden) {
+      slowT = frameEma > (app.quality >= 2 ? 40 : 25) ? slowT + rawMs : 0;
       if (slowT > 3000 && app.quality < 3) {
         app.quality++;
         slowT = 0;
-        drawEma = 16.7;
+        frameEma = 16.7;
         resize();
       }
     }
+    // Auf Displays mit 120 Hz und mehr nur jedes n-te Bild zeichnen (~60 fps);
+    // 60–90 Hz zeichnen jedes Bild.
+    const every = Math.max(1, Math.floor(1000 / 60 / frameEma + 0.25));
+    frameNo++;
+    if (frameNo % every !== 0) return;
     draw(s);
   }
 
@@ -635,7 +664,8 @@
     renderer.showBaseBars = !app.touch; // im Touch-Layout stehen die Basis-LP in den Infotafeln
     renderer.drawWorld(s);
     const opts = hudOpts();
-    if (inMatch()) hud.draw(s, opts);
+    // Im großen Layout würde das HUD unter Pause/Spielende-Bildschirmen durchscheinen.
+    if (inMatch() && (app.mode === 'play' || !view.big)) hud.draw(s, opts);
     const items = menuItems();
     if (app.sel >= items.length) app.sel = Math.max(0, items.length - 1);
     const area = { top: view.top, h: view.vh };
@@ -655,7 +685,7 @@
     started = true;
     let restored = false;
     try {
-      restored = restore(data);
+      restored = restore(data, true);
     } catch (e) {
       restored = false;
     }
@@ -670,8 +700,15 @@
   } catch (e) {
     /* Live-Update nicht verfügbar */
   }
-  if (hot && hot.ready) hot.ready(start);
-  else start((hot && hot.data) || {});
+  if (hot && hot.ready) {
+    try {
+      hot.ready(start);
+    } catch (e) {
+      /* ignorieren */
+    }
+    // Falls der Viewer nie zurückruft, trotzdem starten.
+    setTimeout(() => start((hot && hot.data) || {}), 2000);
+  } else start((hot && hot.data) || {});
 
   // Für Fehlersuche und automatisierte Browser-Tests
   app.sound = sound;

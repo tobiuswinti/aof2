@@ -21,12 +21,23 @@ lediglich am bekannten Genre-Prinzip „Basis gegen Basis auf einer Spur“ orie
 **Variante 1 – Datei öffnen:** `index.html` im Browser öffnen (Doppelklick genügt).
 
 **Variante 2 – Einzeldatei:** `npm run build` erzeugt `dist/epochenkrieg.html`, eine einzelne Datei mit allem
-drin – ideal zum Weitergeben.
+drin – ideal zum Weitergeben. Zusätzlich entsteht `dist/artifact.html` (Seitenfragment für claude.ai-Artifacts).
 
 **Variante 3 – lokaler Server:** `npm start` und dann <http://localhost:8080> öffnen.
 
 **Variante 4 – GitHub Pages:** In den Repository-Einstellungen unter *Pages* „Deploy from a branch“ mit
 dem Ordner `/ (root)` wählen – `index.html` liegt bereits im Hauptverzeichnis.
+
+## Am Handy oder Tablet
+
+- Hochformat und Querformat funktionieren. Im Hochformat wird das Spiel automatisch gedreht dargestellt –
+  steht es auf dem Kopf, im Menü oder in der Pause „Bild drehen“ antippen.
+- Gegen die KI liegen die acht Knöpfe groß am unteren Rand. Zu zweit hat Spieler 1 die Knöpfe links unten,
+  Spieler 2 rechts unten (gespiegelt, sodass die Einheiten bei beiden außen liegen).
+- „Verkaufen“ braucht per Touch ein zweites Tippen, „Neu starten“ und „Hauptmenü“ fragen nach.
+- Beim Wechsel in eine andere App pausiert das Spiel; die Partie wird laufend gesichert und lässt sich nach
+  dem Neuladen über „Partie fortsetzen“ weiterspielen.
+- Ton startet nach der ersten Berührung. Am iPhone unterdrückt der Stummschalter den Ton.
 
 ## Steuerung
 

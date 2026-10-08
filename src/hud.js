@@ -574,7 +574,7 @@
       }
 
       // Unterzeile: Kosten / Abklingzeit / Status (im Touch-Layout größer)
-      const lf = opts.layout === 'touch' ? 13 : 11;
+      const lf = opts.layout === 'touch' ? 14 : 11;
       ctx.font = `400 ${lf}px ${FONT}`;
       ctx.textAlign = 'center';
       let label = '';

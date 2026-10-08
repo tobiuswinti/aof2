@@ -354,7 +354,7 @@
             const x = ev.team === 0 ? 80 : W - 80;
             this.add({ kind: 'ring', x, y: GROUND_Y - 120, size: 260, life: 0.9, color: S.TEAM[ev.team].light });
             this.burst('spark', x, GROUND_Y - 140, 40, { speed: 260, life: 1.0, size: 3, g: 120, colors: [S.TEAM[ev.team].light, '#ffffff', '#ffd84a'] });
-            this.add({ kind: 'banner', x: ev.team === 0 ? W * 0.28 : W * 0.72, y: 300, text: D.AGES[ev.age].name.toUpperCase(), color: S.TEAM[ev.team].light, life: 2.4 });
+            this.add({ kind: 'banner', x: ev.team === 0 ? W * 0.28 : W * 0.72, y: 380, text: D.AGES[ev.age].name.toUpperCase(), color: S.TEAM[ev.team].light, life: 2.4 });
             this.flash = 0.5;
             this.flashColor = S.TEAM[ev.team].light;
             break;
@@ -362,7 +362,7 @@
           case 'elite': {
             const x = ev.team === 0 ? 80 : W - 80;
             this.burst('spark', x, GROUND_Y - 140, 30, { speed: 220, life: 0.9, size: 3, g: 120, colors: ['#ffd84a', '#ffffff'] });
-            this.add({ kind: 'banner', x: ev.team === 0 ? W * 0.28 : W * 0.72, y: 300, text: 'ELITE ' + 'I'.repeat(ev.level), color: '#ffd84a', life: 2 });
+            this.add({ kind: 'banner', x: ev.team === 0 ? W * 0.28 : W * 0.72, y: 380, text: 'ELITE ' + 'I'.repeat(ev.level), color: '#ffd84a', life: 2 });
             break;
           }
           case 'strike':
@@ -743,7 +743,7 @@
             break;
           case 'airstrike': {
             ctx.save();
-            ctx.translate(fx.planeX, 205);
+            ctx.translate(fx.planeX, 312);
             ctx.scale(fx.dir, 1);
             S.drawPlane(ctx, fx.team, 0, 0, 1.25);
             ctx.restore();

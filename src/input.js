@@ -55,7 +55,7 @@
       // iOS schaltet WebAudio teils erst bei touchend/click frei; Zoom-Gesten unterbinden.
       for (const ev of ['touchend', 'click']) window.addEventListener(ev, () => this.safeUnlock(), { passive: true });
       for (const ev of ['gesturestart', 'gesturechange', 'dblclick']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
-      canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+      canvas.addEventListener('touchstart', (e) => e.cancelable && e.preventDefault(), { passive: false });
     }
 
     // Audio-Freischaltung darf nie die eigentliche Eingabe verhindern.
@@ -108,9 +108,11 @@
     // phase: 'down' (Spielknöpfe reagieren sofort), 'up' (Menüs – erst beim Loslassen,
     // das gilt auch als Nutzeraktivierung für Vollbild auf Touch-Geräten), 'move' (Hover).
     onPointer(e, phase) {
+      // Erst den Gerätetyp melden: Schaltet das das Layout um (erster Fingertipp auf einem
+      // Touch-Laptop), zielte der Nutzer auf das alte Bild – dieser Tipp löst dann nichts aus.
+      const switched = this.h.pointer && phase !== 'up' ? this.h.pointer(e.pointerType) : false;
       const rect = this.canvas.getBoundingClientRect();
       const p = this.toLogical(e.clientX - rect.left, e.clientY - rect.top);
-      if (this.h.pointer && phase !== 'up') this.h.pointer(e.pointerType);
       if (phase === 'down') {
         this.safeUnlock();
         e.preventDefault();
@@ -121,7 +123,7 @@
         } catch (err) {
           /* ignorieren */
         }
-        this.h.click(p.x, p.y, e.pointerType, e.pointerId);
+        if (!switched) this.h.click(p.x, p.y, e.pointerType, e.pointerId);
       } else if (phase === 'up') {
         if (this.h.release) this.h.release(p.x, p.y, e.pointerType, e.pointerId);
       } else if (e.pointerType === 'mouse') {

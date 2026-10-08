@@ -98,9 +98,35 @@
       }
       return v;
     });
-    if (!s || !Array.isArray(s.players) || s.players.length !== 2 || !Array.isArray(s.units)) throw new Error('Ungültiger Spielstand');
+    validate(s);
     s.events = [];
     return attachRand(s);
+  }
+
+  // Strukturprüfung eines geladenen Stands – ein inkonsistenter Stand würde sonst erst
+  // beim Zeichnen (z. B. Siegbildschirm ohne Sieger) scheitern.
+  function validate(s) {
+    const fail = (why) => {
+      throw new Error('Ungültiger Spielstand: ' + why);
+    };
+    const num = (v) => typeof v === 'number' && Number.isFinite(v);
+    const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+    const last = D.AGES.length - 1;
+    if (!s || typeof s !== 'object' || !Array.isArray(s.players) || s.players.length !== 2) fail('Spieler');
+    if (!Array.isArray(s.units) || !Array.isArray(s.projectiles) || !Array.isArray(s.effects)) fail('Listen');
+    if (typeof s.over !== 'boolean' || !num(s.time) || !num(s.rng)) fail('Kopf');
+    if (s.over ? !int(s.winner, 0, 1) : s.winner !== -1) fail('Sieger');
+    s.players.forEach((p, i) => {
+      if (!p || p.team !== i || !int(p.age, 0, last) || !int(p.elite, 0, R.eliteMax)) fail('Spieler ' + i);
+      if (![p.gold, p.xp, p.baseHp, p.baseMaxHp, p.specialCd, p.bonus].every(num) || p.baseMaxHp <= 0) fail('Werte ' + i);
+      if (!Array.isArray(p.turrets) || p.turrets.length < 1 || p.turrets.length > R.maxSlots) fail('Türme ' + i);
+      for (const t of p.turrets) if (t !== null && (!t || !int(t.age, 0, p.age) || !num(t.cd))) fail('Turm ' + i);
+      if (!Array.isArray(p.queue) || p.queue.length > R.queueMax) fail('Warteschlange ' + i);
+      for (const q of p.queue) if (!q || !q.def || !q.def.look || !num(q.t)) fail('Auftrag ' + i);
+    });
+    for (const u of s.units) {
+      if (!u || !u.def || !u.def.look || (u.team !== 0 && u.team !== 1) || ![u.x, u.hp, u.maxHp].every(num)) fail('Einheit');
+    }
   }
 
   function emit(s, ev) {
@@ -751,7 +777,7 @@
           const passed = fx.dir === 1 ? fx.planeX >= fx.nextDrop : fx.planeX <= fx.nextDrop;
           const before = fx.dir === 1 ? fx.nextDrop < fx.end : fx.nextDrop > fx.end;
           if (passed && before) {
-            fx.bombs.push({ x: fx.nextDrop, y: 215, vy: 0, vx: fx.dir * sp.speed * 0.6 });
+            fx.bombs.push({ x: fx.nextDrop, y: 322, vy: 0, vx: fx.dir * sp.speed * 0.6 });
             fx.nextDrop += fx.dir * sp.spacing;
           }
           for (const b of fx.bombs) {
