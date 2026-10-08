@@ -158,14 +158,13 @@
         const d = this.noise.getChannelData(0);
         for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
         this.nextTime = ctx.currentTime + 0.1;
+        // iOS meldet 'interrupted' (Anruf, Kontrollzentrum, Siri) – das Spiel pausiert dann.
+        ctx.onstatechange = () => {
+          if (ctx.state !== 'running' && !this.hidden && this.onInterrupt) this.onInterrupt(ctx.state);
+        };
       }
-      // iOS: auch bei stummgeschaltetem Gerät abspielen (Safari 17+), ein stiller Puffer
-      // innerhalb der Geste schaltet WebAudio zuverlässig frei.
-      try {
-        if (navigator.audioSession) navigator.audioSession.type = 'playback';
-      } catch (e) {
-        /* nicht unterstützt */
-      }
+      // iOS: Ein stiller Puffer innerhalb der Geste schaltet WebAudio zuverlässig frei.
+      // (Bewusst kein audioSession = 'playback': das würde die Musik anderer Apps stoppen.)
       if (this.ctx.state !== 'running' && !this.hidden) {
         const p = this.ctx.resume();
         if (p && p.catch) p.catch(() => {});

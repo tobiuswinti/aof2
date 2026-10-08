@@ -1,4 +1,9 @@
 // Bildschirme außerhalb des Kampfes: Hauptmenü, Steuerung, Pause, Spielende.
+// Menüeinträge kommen als Liste von { id, label, kind } aus main.js:
+//   kind 'big'   – normale Zeile
+//   kind 'level' – Zeile mit großen ‹ ›-Flächen links/rechts (Tippen wechselt den Wert)
+//   kind 'small' – kompakte Optionsknöpfe in einer gemeinsamen Zeile darunter
+// Jeder Bildschirm passt sich in den sichtbaren Bereich area = { top, h } ein.
 (function (EK) {
   'use strict';
 
@@ -12,19 +17,38 @@
   const PAD_NAMES = ['A', 'X', 'Y', 'B', 'LB', 'RB', 'LT', 'RT'];
   const LEVEL_NAMES = { leicht: 'Leicht', normal: 'Normal', schwer: 'Schwer' };
 
+  // Touch-Erklärung: jeweils ein Knopf und was er tut (Index = Aktion).
+  const TOUCH_HELP = [
+    ['Nahkämpfer', 'günstig, hält die Front'],
+    ['Fernkämpfer', 'schießt über die eigenen Reihen'],
+    ['Schwere Einheit', 'teuer, sehr robust'],
+    ['Spezialangriff', 'lädt sich nach dem Einsatz neu auf'],
+    ['Turm kaufen', 'braucht einen freien Turmplatz'],
+    ['Turmplatz bauen', 'bis zu drei pro Basis'],
+    ['Turm verkaufen', 'zweimal tippen: ältester Turm geht'],
+    ['Zeitalter aufsteigen', 'sobald der XP-Balken voll ist'],
+  ];
+
+  const ROW_H = 56;
+  const ROW_STEP = 66;
+  const SMALL_H = 54;
+
   class UI {
     constructor(ctx) {
       this.ctx = ctx;
-      this.items = [];
+      this.rects = [];
       this.time = 0;
     }
 
+    // Liefert { index, side } – side ist bei 'level'-Zeilen -1 (links) oder +1 (rechts).
     hit(x, y) {
-      for (let i = 0; i < this.items.length; i++) {
-        const r = this.items[i];
-        if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return i;
+      for (let i = 0; i < this.rects.length; i++) {
+        const r = this.rects[i];
+        if (r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+          return { index: i, side: x < r.x + r.w / 2 ? -1 : 1 };
+        }
       }
-      return -1;
+      return null;
     }
 
     dim(a) {
@@ -48,89 +72,116 @@
       ctx.fillText(text, W / 2, y);
     }
 
-    menuList(labels, sel, y0, w) {
+    listHeight(items) {
+      const big = items.filter((it) => it.kind !== 'small').length;
+      const small = items.some((it) => it.kind === 'small');
+      return big * ROW_STEP + (small ? SMALL_H + 10 : 0);
+    }
+
+    // Zeichnet die Einträge ab y0 und merkt sich ihre Flächen für hit().
+    drawItems(items, sel, y0, w) {
       const ctx = this.ctx;
-      this.items = [];
-      labels.forEach((label, i) => {
-        const r = { x: W / 2 - w / 2, y: y0 + i * 68, w, h: 58 };
-        this.items.push(r);
+      this.rects = [];
+      let y = y0;
+      const smalls = items.filter((it) => it.kind === 'small');
+      const sw = Math.min(190, (w - (smalls.length - 1) * 12) / Math.max(1, smalls.length));
+      let sx = W / 2 - (smalls.length * sw + (smalls.length - 1) * 12) / 2;
+      const sy = y0 + (items.length - smalls.length) * ROW_STEP;
+      items.forEach((it, i) => {
+        let r;
+        if (it.kind === 'small') {
+          r = { x: sx, y: sy, w: sw, h: SMALL_H };
+          sx += sw + 12;
+        } else {
+          r = { x: W / 2 - w / 2, y, w, h: ROW_H };
+          y += ROW_STEP;
+        }
+        this.rects.push(r);
         const active = i === sel;
-        ctx.fillStyle = active ? 'rgba(59,130,246,0.9)' : 'rgba(20,23,42,0.85)';
+        ctx.fillStyle = it.confirm ? 'rgba(190,40,48,0.92)' : active ? 'rgba(59,130,246,0.92)' : 'rgba(20,23,42,0.88)';
         S.rrect(ctx, r.x, r.y, r.w, r.h, 12);
         ctx.fill();
         ctx.strokeStyle = active ? '#ffd84a' : '#3b415e';
         ctx.lineWidth = active ? 3 : 1.5;
         ctx.stroke();
-        ctx.font = `400 22px ${FONT}`;
         ctx.textAlign = 'center';
         ctx.fillStyle = '#f4f1e8';
-        ctx.fillText(label, W / 2, r.y + 37);
+        if (it.kind === 'level') {
+          // Deutlich sichtbare Tippflächen für ‹ und ›
+          for (const side of [-1, 1]) {
+            const ax = side < 0 ? r.x + 6 : r.x + r.w - 6 - 84;
+            ctx.fillStyle = 'rgba(255,255,255,0.12)';
+            S.rrect(ctx, ax, r.y + 6, 84, r.h - 12, 9);
+            ctx.fill();
+            ctx.font = `400 34px ${FONT}`;
+            ctx.fillStyle = '#ffd84a';
+            ctx.fillText(side < 0 ? '‹' : '›', ax + 42, r.y + 40);
+          }
+          ctx.fillStyle = '#f4f1e8';
+        }
+        ctx.font = `400 ${it.kind === 'small' ? 18 : 22}px ${FONT}`;
+        ctx.fillText(it.label, r.x + r.w / 2, r.y + r.h / 2 + 8);
       });
     }
 
-    drawMenu(sel, opts) {
+    drawMenu(items, sel, area, opts) {
       this.time += 1 / 60;
-      this.dim(0.45);
-      const bob = Math.sin(this.time * 1.5) * 3;
-      this.title('EPOCHENKRIEG', 190 + bob, 76);
       const ctx = this.ctx;
-      ctx.font = `400 18px ${FONT}`;
+      this.dim(0.45);
+      const listH = this.listHeight(items);
+      const footH = opts.touch ? 34 : 60;
+      const blockH = 70 + 36 + listH + footH;
+      const y0 = area.top + Math.max(6, (area.h - blockH) / 2);
+      const bob = Math.sin(this.time * 1.5) * 3;
+      this.title('EPOCHENKRIEG', y0 + 62 + bob, 70);
+      ctx.font = `400 19px ${FONT}`;
       ctx.fillStyle = '#e6e9f5';
       ctx.textAlign = 'center';
-      ctx.fillText('Duell durch sechs Zeitalter – von der Steinzeit bis in die Zukunft', W / 2, 232);
-      this.menuList(
-        ['2 SPIELER · LOKAL', `1 SPIELER · GEGEN KI  ‹ ${LEVEL_NAMES[opts.level]} ›`, 'STEUERUNG', `MUSIK: ${opts.musicOn ? 'AN' : 'AUS'}`],
-        sel,
-        268,
-        520
-      );
-      ctx.font = `400 ${opts.touch ? 15 : 13}px ${FONT}`;
-      ctx.fillStyle = 'rgba(230,233,245,0.75)';
-      const hint = opts.touch
-        ? 'Tippe auf einen Eintrag · ‹ › wechselt die KI-Stufe'
-        : 'Pfeiltasten + Enter, Maus/Touch oder Gamepad · M = Musik · ESC = Pause';
-      ctx.fillText(hint, W / 2, 568);
-      ctx.fillText('Eigenständiges Spiel – Grafik und Musik werden im Browser erzeugt.', W / 2, 592);
+      ctx.fillText('Duell durch sechs Zeitalter – von der Steinzeit bis in die Zukunft', W / 2, y0 + 96);
+      const ly = y0 + 112;
+      this.drawItems(items, sel, ly, 560);
+      ctx.font = `400 ${opts.touch ? 17 : 14}px ${FONT}`;
+      ctx.fillStyle = 'rgba(230,233,245,0.8)';
+      ctx.textAlign = 'center';
+      if (opts.touch) {
+        ctx.fillText('Tippe auf einen Eintrag · ‹ › ändert die KI-Stufe · Grafik und Musik entstehen im Browser', W / 2, ly + listH + 24);
+      } else {
+        ctx.fillText('Pfeiltasten + Enter, Maus/Touch oder Gamepad · M = Musik · ESC = Pause', W / 2, ly + listH + 24);
+        ctx.fillText('Eigenständiges Spiel – Grafik und Musik werden im Browser erzeugt.', W / 2, ly + listH + 48);
+      }
     }
 
-    // Steuerung für Touch-Geräte: Was die Knöpfe unten am Bildschirmrand tun.
-    drawTouchControls() {
+    // Steuerung für Touch-Geräte: die echten Knöpfe mit kurzer Erklärung.
+    drawTouchControls(items, sel, area, opts) {
       const ctx = this.ctx;
-      this.dim(0.84);
-      this.title('SO WIRD GESPIELT', 84, 42);
-      const rows = [
-        ['1 · 2 · 3', 'Einheiten ausbilden: Nahkampf, Fernkampf, schwer. Die Zahl am Knopf zeigt die Warteschlange.'],
-        ['4', 'Spezialangriff – lädt sich nach jedem Einsatz wieder auf.'],
-        ['5', 'Turm kaufen (braucht einen freien Turmplatz).'],
-        ['6', 'Neuen Turmplatz an der Basis bauen (bis zu drei).'],
-        ['7', 'Ältesten Turm verkaufen – Platz frei für einen besseren.'],
-        ['8', 'Ins nächste Zeitalter aufsteigen, sobald der XP-Balken voll ist.'],
-      ];
-      ctx.fillStyle = 'rgba(20,23,42,0.92)';
-      S.rrect(ctx, 150, 112, 980, 380, 16);
-      ctx.fill();
-      rows.forEach((r, i) => {
-        const y = 160 + i * 54;
-        ctx.textAlign = 'center';
-        ctx.font = `400 20px ${FONT}`;
-        ctx.fillStyle = '#ffd84a';
-        ctx.fillText(r[0], 260, y);
+      this.dim(0.86);
+      const blockH = 56 + 4 * 84 + 70 + ROW_STEP;
+      const y0 = area.top + Math.max(6, (area.h - blockH) / 2);
+      this.title('SO WIRD GESPIELT', y0 + 44, 40);
+      const cols = [W / 2 - 560, W / 2 + 20];
+      for (let i = 0; i < 8; i++) {
+        const x = cols[i < 4 ? 0 : 1];
+        const y = y0 + 64 + (i % 4) * 84;
+        if (opts.drawButton) opts.drawButton(i, { x, y, w: 74, h: 74 });
         ctx.textAlign = 'left';
-        ctx.font = `400 18px ${FONT}`;
+        ctx.font = `400 22px ${FONT}`;
         ctx.fillStyle = '#f4f1e8';
-        ctx.fillText(r[1], 350, y);
-      });
+        ctx.fillText(TOUCH_HELP[i][0], x + 90, y + 32);
+        ctx.font = `400 17px ${FONT}`;
+        ctx.fillStyle = '#c9cde0';
+        ctx.fillText(TOUCH_HELP[i][1], x + 90, y + 58);
+      }
       ctx.textAlign = 'center';
       ctx.font = `400 17px ${FONT}`;
-      ctx.fillStyle = '#c9cde0';
-      ctx.fillText('Knöpfe von links nach rechts gezählt. Zu zweit: Spieler 1 links unten, Spieler 2 rechts unten.', W / 2, 528);
-      ctx.fillText('Pause oben in der Mitte. Wer zuerst die gegnerische Basis zerstört, gewinnt.', W / 2, 556);
-      this.items = [];
-      this.menuList(['ZURÜCK'], 0, 590, 300);
+      ctx.fillStyle = '#e6e9f5';
+      const ty = y0 + 64 + 4 * 84 + 12;
+      ctx.fillText('Zu zweit: Spieler 1 hat die Knöpfe links unten, Spieler 2 rechts unten (gespiegelt).', W / 2, ty);
+      ctx.fillText('Pause oben in der Mitte · kein Ton? Am iPhone den Stummschalter prüfen.', W / 2, ty + 26);
+      this.drawItems(items, sel, ty + 46, 300);
     }
 
-    drawControls(opts) {
-      if (opts && opts.touch) return this.drawTouchControls();
+    drawControls(items, sel, area, opts) {
+      if (opts.touch) return this.drawTouchControls(items, sel, area, opts);
       const ctx = this.ctx;
       this.dim(0.82);
       this.title('STEUERUNG', 90, 46);
@@ -177,28 +228,32 @@
       ctx.font = `400 14px ${FONT}`;
       ctx.textAlign = 'center';
       ctx.fillStyle = '#e6e9f5';
-      ctx.fillText('Alle Knöpfe lassen sich auch mit Maus oder Touch bedienen – ideal für zwei Spieler an einem Tablet.', W / 2, 580);
-      ctx.fillText('Gegen die KI: zusätzlich Zifferntasten 1–8.   ESC = Pause   M = Musik an/aus', W / 2, 604);
-      this.items = [];
-      this.menuList(['ZURÜCK'], 0, 632, 260);
+      ctx.fillText('Alle Knöpfe lassen sich auch mit Maus oder Touch bedienen – ideal für zwei Spieler an einem Tablet.', W / 2, 572);
+      ctx.fillText('Gegen die KI: zusätzlich Zifferntasten 1–8.   ESC = Pause   M = Musik an/aus', W / 2, 596);
+      this.drawItems(items, sel, 618, 260);
     }
 
-    drawPause(sel) {
+    drawPause(items, sel, area) {
       this.dim(0.6);
-      this.title('PAUSE', 250, 64);
-      this.menuList(['WEITER', 'NEU STARTEN', 'STEUERUNG', 'HAUPTMENÜ'], sel, 290, 400);
+      const listH = this.listHeight(items);
+      const y0 = area.top + Math.max(8, (area.h - (76 + listH)) / 2);
+      this.title('PAUSE', y0 + 58, 60);
+      this.drawItems(items, sel, y0 + 76, 440);
     }
 
-    drawOver(s, sel, opts) {
+    drawOver(s, items, sel, area, opts) {
       const ctx = this.ctx;
       this.dim(0.55);
+      const listH = this.listHeight(items);
+      const y0 = area.top + Math.max(6, (area.h - (66 + 168 + 34 + listH)) / 2);
       const w = s.winner;
       const T = S.TEAM[w];
-      this.title(`${opts.names[w]} GEWINNT!`, 230, 58, T.light);
+      this.title(`${opts.names[w]} GEWINNT!`, y0 + 52, 54, T.light);
+      const ty = y0 + 66;
       ctx.fillStyle = 'rgba(20,23,42,0.9)';
-      S.rrect(ctx, W / 2 - 300, 262, 600, 150, 14);
+      S.rrect(ctx, W / 2 - 320, ty, 640, 160, 14);
       ctx.fill();
-      ctx.font = `400 15px ${FONT}`;
+      ctx.font = `400 17px ${FONT}`;
       ctx.textAlign = 'left';
       const rows = [
         ['', opts.names[0], opts.names[1]],
@@ -208,19 +263,19 @@
         ['Beute (Gold)', ...s.players.map((p) => EK.hud.fmt(p.stats.goldEarned))],
       ];
       rows.forEach((r, i) => {
-        const y = 290 + i * 26;
+        const y = ty + 30 + i * 29;
         ctx.fillStyle = '#9aa3c0';
-        ctx.fillText(r[0], W / 2 - 280, y);
+        ctx.fillText(r[0], W / 2 - 296, y);
         ctx.fillStyle = i === 0 ? S.TEAM[0].light : '#f4f1e8';
         ctx.fillText(r[1], W / 2 - 120, y);
         ctx.fillStyle = i === 0 ? S.TEAM[1].light : '#f4f1e8';
-        ctx.fillText(r[2], W / 2 + 100, y);
+        ctx.fillText(r[2], W / 2 + 110, y);
       });
       const t = Math.floor(s.time);
       ctx.textAlign = 'center';
       ctx.fillStyle = '#c9cde0';
-      ctx.fillText(`Spieldauer ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`, W / 2, 436);
-      this.menuList(['REVANCHE', 'HAUPTMENÜ'], sel, 452, 360);
+      ctx.fillText(`Spieldauer ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`, W / 2, ty + 186);
+      this.drawItems(items, sel, ty + 204, 380);
     }
   }
 

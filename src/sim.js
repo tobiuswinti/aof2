@@ -751,7 +751,7 @@
           const passed = fx.dir === 1 ? fx.planeX >= fx.nextDrop : fx.planeX <= fx.nextDrop;
           const before = fx.dir === 1 ? fx.nextDrop < fx.end : fx.nextDrop > fx.end;
           if (passed && before) {
-            fx.bombs.push({ x: fx.nextDrop, y: 150, vy: 0, vx: fx.dir * sp.speed * 0.6 });
+            fx.bombs.push({ x: fx.nextDrop, y: 215, vy: 0, vx: fx.dir * sp.speed * 0.6 });
             fx.nextDrop += fx.dir * sp.spacing;
           }
           for (const b of fx.bombs) {

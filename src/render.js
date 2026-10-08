@@ -254,6 +254,12 @@
       return this.ruins[key];
     }
 
+    // Nach einem Verlust des Zeichenkontexts müssen die Offscreen-Caches neu entstehen.
+    invalidate() {
+      this.bg = [];
+      this.ruins = {};
+    }
+
     reset() {
       this.particles.length = 0;
       this.shake = 0;
@@ -399,9 +405,10 @@
       }
     }
 
-    update(dt, s) {
+    // dt = Spielzeit (0 während der Pause), realDt = echte Zeit für reine Optik-Übergänge.
+    update(dt, s, realDt) {
       this.time += dt;
-      this.eraFade = Math.min(1, this.eraFade + dt / 2.5);
+      this.eraFade = Math.min(1, this.eraFade + (realDt != null ? realDt : dt) / 2.5);
       this.shake = Math.max(0, this.shake - dt * 18);
       this.flash = Math.max(0, this.flash - dt * 1.6);
       for (const c of this.clouds) {
@@ -510,6 +517,7 @@
           ctx.restore();
         }
         // Lebensbalken der Basis
+        if (this.showBaseBars === false) continue;
         const bw = 120;
         const bx = p.team === 0 ? 8 : W - 8 - bw;
         const by = GROUND_Y - 338;
@@ -735,7 +743,7 @@
             break;
           case 'airstrike': {
             ctx.save();
-            ctx.translate(fx.planeX, 132);
+            ctx.translate(fx.planeX, 205);
             ctx.scale(fx.dir, 1);
             S.drawPlane(ctx, fx.team, 0, 0, 1.25);
             ctx.restore();

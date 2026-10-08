@@ -46,19 +46,30 @@
       this.pads = [];
       this.toLogical = (x, y) => ({ x, y });
       window.addEventListener('keydown', (e) => this.onKey(e));
-      canvas.addEventListener('pointerdown', (e) => this.onPointer(e, true));
-      canvas.addEventListener('pointermove', (e) => this.onPointer(e, false));
+      canvas.tabIndex = 0;
+      canvas.addEventListener('pointerdown', (e) => this.onPointer(e, 'down'));
+      canvas.addEventListener('pointermove', (e) => this.onPointer(e, 'move'));
+      canvas.addEventListener('pointerup', (e) => this.onPointer(e, 'up'));
       canvas.addEventListener('pointerleave', () => this.h.hover(null));
       canvas.addEventListener('contextmenu', (e) => e.preventDefault());
       // iOS schaltet WebAudio teils erst bei touchend/click frei; Zoom-Gesten unterbinden.
-      for (const ev of ['touchend', 'click']) window.addEventListener(ev, () => this.h.unlock(), { passive: true });
+      for (const ev of ['touchend', 'click']) window.addEventListener(ev, () => this.safeUnlock(), { passive: true });
       for (const ev of ['gesturestart', 'gesturechange', 'dblclick']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
       canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
     }
 
+    // Audio-Freischaltung darf nie die eigentliche Eingabe verhindern.
+    safeUnlock() {
+      try {
+        this.h.unlock();
+      } catch (e) {
+        /* ignorieren */
+      }
+    }
+
     onKey(e) {
       if (e.repeat) return;
-      this.h.unlock();
+      this.safeUnlock();
       if (this.h.keyboard) this.h.keyboard();
       const code = e.code;
       if (code === 'Escape') {
@@ -94,21 +105,40 @@
       }
     }
 
-    onPointer(e, down) {
+    // phase: 'down' (Spielknöpfe reagieren sofort), 'up' (Menüs – erst beim Loslassen,
+    // das gilt auch als Nutzeraktivierung für Vollbild auf Touch-Geräten), 'move' (Hover).
+    onPointer(e, phase) {
       const rect = this.canvas.getBoundingClientRect();
       const p = this.toLogical(e.clientX - rect.left, e.clientY - rect.top);
-      if (this.h.pointer) this.h.pointer(e.pointerType);
-      if (down) {
-        this.h.unlock();
+      if (this.h.pointer && phase !== 'up') this.h.pointer(e.pointerType);
+      if (phase === 'down') {
+        this.safeUnlock();
         e.preventDefault();
-        this.h.click(p.x, p.y, e.pointerType);
+        // preventDefault verhindert den automatischen Fokus – ohne Fokus kämen im
+        // eingebetteten Rahmen keine Tastatureingaben an.
+        try {
+          this.canvas.focus({ preventScroll: true });
+        } catch (err) {
+          /* ignorieren */
+        }
+        this.h.click(p.x, p.y, e.pointerType, e.pointerId);
+      } else if (phase === 'up') {
+        if (this.h.release) this.h.release(p.x, p.y, e.pointerType, e.pointerId);
       } else if (e.pointerType === 'mouse') {
         this.h.move(p.x, p.y);
       }
     }
 
     pollGamepads() {
-      const list = navigator.getGamepads ? navigator.getGamepads() : [];
+      // Im abgeschotteten Rahmen kann getGamepads() per Permissions-Policy werfen.
+      if (this.noPads) return;
+      let list = [];
+      try {
+        list = navigator.getGamepads ? navigator.getGamepads() || [] : [];
+      } catch (e) {
+        this.noPads = true;
+        return;
+      }
       let idx = 0;
       for (const gp of list) {
         if (!gp || !gp.connected) continue;

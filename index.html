@@ -7,17 +7,17 @@
     <meta name="description" content="Zwei-Spieler-Strategiespiel: Führe deine Armee durch sechs Zeitalter und zerstöre die gegnerische Basis." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Russo+One&display=swap" rel="stylesheet" />
     <style>
       :root {
         color-scheme: dark;
         --ground: #05060d;
         --ink: #f4f1e8;
-      }
-      html {
         height: 100%;
         box-sizing: border-box;
         background: var(--ground);
+        touch-action: none;
+        overscroll-behavior: none;
+        -webkit-text-size-adjust: 100%;
       }
       body {
         height: 100%;
@@ -67,5 +67,7 @@
     <script src="src/audio.js"></script>
     <script src="src/input.js"></script>
     <script src="src/main.js"></script>
+    <!-- Schrift erst nach den Skripten laden: ein langsamer Font-Server darf den Start nicht blockieren. -->
+    <link href="https://fonts.googleapis.com/css2?family=Russo+One&display=swap" rel="stylesheet" />
   </body>
 </html>

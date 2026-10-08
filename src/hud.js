@@ -31,39 +31,56 @@
     return team === 0 ? 10 : W - 10 - PANEL_W;
   }
 
-  // Berechnet alle Flächen des HUD für Layout, Spielerzahl und Vollbild-Verfügbarkeit.
-  function layout(mode, humans, canFull) {
-    const ids = canFull ? ['pause', 'music', 'full'] : ['pause', 'music'];
-    const L = { mode, panels: [], buttons: [null, null], center: null, ui: [] };
+  // Berechnet alle Flächen des HUD. top = oberer Rand des sichtbaren Bereichs (auf breiten
+  // Handys wird oben Himmel abgeschnitten, damit alles größer dargestellt werden kann).
+  // Jede Knopf-Fläche hat zusätzlich eine Trefferfläche (hit), die Lücken mit abdeckt.
+  function layout(mode, humans, canFull, top) {
+    top = top || 0;
+    const L = { mode, top, panels: [], buttons: [null, null], center: null, ui: [] };
+    const withHit = (r, h) => Object.assign(r, { hit: h || r });
     if (mode !== 'touch') {
+      const ids = canFull ? ['pause', 'music', 'full'] : ['pause', 'music'];
       for (let team = 0; team < 2; team++) {
         const x = panelX(team);
-        L.panels.push({ x, y: 10, w: PANEL_W, h: PANEL_H });
-        L.buttons[team] = ACTIONS.map((a, i) => ({ x: x + 12 + i * (BTN + GAP), y: 46, w: BTN, h: BTN }));
+        L.panels.push({ x, y: top + 10, w: PANEL_W, h: PANEL_H });
+        L.buttons[team] = ACTIONS.map((a, i) => withHit({ x: x + 12 + i * (BTN + GAP), y: top + 46, w: BTN, h: BTN }));
       }
-      L.center = { x: W / 2 - 70, y: 10, w: 140, h: 96 };
+      L.center = { x: W / 2 - 70, y: top + 10, w: 140, h: 96 };
       const total = ids.length * 38 + (ids.length - 1) * 7;
-      ids.forEach((id, i) => L.ui.push({ id, x: W / 2 - total / 2 + i * 45, y: 64, w: 38, h: 34 }));
+      ids.forEach((id, i) => L.ui.push(withHit({ id, x: W / 2 - total / 2 + i * 45, y: top + 64, w: 38, h: 34 })));
       return L;
     }
-    L.panels.push({ x: 10, y: 10, w: 420, h: 96 }, { x: W - 430, y: 10, w: 420, h: 96 });
-    L.center = { x: W / 2 - 92, y: 10, w: 184, h: 96 };
-    const bw = ids.length === 3 ? 52 : 76;
-    const total = ids.length * bw + (ids.length - 1) * 8;
-    ids.forEach((id, i) => L.ui.push({ id, x: W / 2 - total / 2 + i * (bw + 8), y: 52, w: bw, h: 48 }));
+    // Touch: oben kompakte Infotafeln und ein großer Pause-Knopf (Musik/Vollbild im Pausenmenü)
+    L.panels.push({ x: 8, y: top + 8, w: 452, h: 112 }, { x: W - 460, y: top + 8, w: 452, h: 112 });
+    L.center = { x: W / 2 - 84, y: top + 8, w: 168, h: 112 };
+    L.ui.push(withHit({ id: 'pause', x: W / 2 - 60, y: top + 50, w: 120, h: 62 }, { x: W / 2 - 84, y: top, w: 168, h: 124 }));
     const hs = [0, 1].filter((t) => humans[t]);
+    const bottom = D.H - 6;
     if (hs.length === 1) {
-      const size = 88;
+      const size = 96;
       const gap = 10;
       const x0 = (W - (8 * size + 7 * gap)) / 2;
-      L.buttons[hs[0]] = ACTIONS.map((a, i) => ({ x: x0 + i * (size + gap), y: D.H - size - 8, w: size, h: size }));
+      const y = bottom - size;
+      L.buttons[hs[0]] = ACTIONS.map((a, i) => {
+        const x = x0 + i * (size + gap);
+        return withHit({ x, y, w: size, h: size }, { x: x - gap / 2, y: y - 8, w: size + gap, h: size + 14 });
+      });
     } else if (hs.length === 2) {
-      const size = 72;
+      // Zwei Reihen mit breiter toter Zone in der Mitte; Spieler 2 gespiegelt, damit
+      // die Einheiten-Knöpfe bei beiden außen unter dem Daumen liegen.
+      const size = 70;
       const gap = 6;
       const rowW = 8 * size + 7 * gap;
+      const y = bottom - size;
       for (const t of hs) {
-        const x0 = t === 0 ? 8 : W - 8 - rowW;
-        L.buttons[t] = ACTIONS.map((a, i) => ({ x: x0 + i * (size + gap), y: D.H - size - 8, w: size, h: size }));
+        const x0 = t === 0 ? 6 : W - 6 - rowW;
+        L.buttons[t] = ACTIONS.map((a, i) => {
+          const slot = t === 0 ? i : 7 - i;
+          const x = x0 + slot * (size + gap);
+          const left = slot === 0 && t === 0 ? x - 6 : x - gap / 2;
+          const right = slot === 7 && t === 1 ? x + size + 6 : x + size + gap / 2;
+          return withHit({ x, y, w: size, h: size }, { x: left, y: y - 8, w: right - left, h: size + 14 });
+        });
       }
     }
     return L;
@@ -83,9 +100,6 @@
     ctx.fillText(text, x, y);
   }
 
-  function grow(r, d) {
-    return d ? { x: r.x - d, y: r.y - d, w: r.w + 2 * d, h: r.h + 2 * d } : r;
-  }
 
   function coin(ctx, x, y, r) {
     ctx.fillStyle = '#b8860b';
@@ -104,6 +118,8 @@
     constructor(ctx) {
       this.ctx = ctx;
       this.flashes = [{}, {}];
+      this.denied = [{}, {}];
+      this.armed = [{}, {}];
       this.hover = null;
       this.time = 0;
       this.L = layout('desktop', [true, true], true);
@@ -113,29 +129,51 @@
       this.flashes[team][action] = 0.18;
     }
 
-    // Trefferprüfung gegen das zuletzt gezeichnete Layout. Touch-Knöpfe bekommen einen
-    // kleinen Rand dazu, damit knappe Fingertipps nicht ins Leere gehen.
+    // Abgelehnte Aktion (zu wenig Gold, Warteschlange voll …): rot aufblinken und wackeln.
+    deny(team, action) {
+      this.denied[team][action] = 0.35;
+    }
+
+    // Aktion braucht eine Bestätigung (zweites Tippen innerhalb von 2 s).
+    arm(team, action) {
+      this.armed[team][action] = 2;
+    }
+
+    isArmed(team, action) {
+      return this.armed[team][action] > 0;
+    }
+
+    disarm(team, action) {
+      this.armed[team][action] = 0;
+    }
+
+    // Trefferprüfung gegen das zuletzt gezeichnete Layout (inklusive Lücken zwischen Knöpfen).
     hit(x, y) {
-      const pad = this.L.mode === 'touch' ? 4 : 0;
-      for (const b of this.L.ui) if (inRect(grow(b, pad), x, y)) return { kind: 'ui', id: b.id };
+      if (this.showUi !== false) for (const b of this.L.ui) if (inRect(b.hit, x, y)) return { kind: 'ui', id: b.id };
       for (let team = 0; team < 2; team++) {
         const btns = this.L.buttons[team];
         if (!btns) continue;
         for (let i = 0; i < btns.length; i++) {
-          if (inRect(grow(btns[i], pad), x, y)) return { kind: 'action', team, action: ACTIONS[i] };
+          if (inRect(btns[i].hit, x, y)) return { kind: 'action', team, action: ACTIONS[i] };
         }
       }
       return null;
     }
 
+    // Layout vorab aktualisieren (z. B. wenn der erste Fingertipp vom Maus- ins Touch-Layout wechselt).
+    relayout(opts) {
+      this.L = layout(opts.layout, opts.humans, opts.canFull, opts.top);
+    }
+
     update(dt) {
       this.time += dt;
-      for (const f of this.flashes) for (const k in f) f[k] = Math.max(0, f[k] - dt);
+      for (const list of [this.flashes, this.denied, this.armed]) for (const f of list) for (const k in f) f[k] = Math.max(0, f[k] - dt);
     }
 
     draw(s, opts) {
       const ctx = this.ctx;
-      const L = (this.L = layout(opts.layout, opts.humans, opts.canFull));
+      const L = (this.L = layout(opts.layout, opts.humans, opts.canFull, opts.top));
+      this.showUi = opts.showUi !== false;
       const touch = L.mode === 'touch';
       for (let team = 0; team < 2; team++) {
         if (touch) this.drawInfo(s, team, L.panels[team], opts);
@@ -150,16 +188,16 @@
       ctx.fillStyle = 'rgba(14,16,30,0.78)';
       S.rrect(ctx, c.x, c.y, c.w, c.h, 12);
       ctx.fill();
-      ctx.font = `400 ${touch ? 28 : 26}px ${FONT}`;
+      ctx.font = `400 ${touch ? 32 : 26}px ${FONT}`;
       ctx.textAlign = 'center';
       ctx.fillStyle = '#f4f1e8';
-      ctx.fillText(txt, W / 2, touch ? 42 : 44);
+      ctx.fillText(txt, W / 2, c.y + (touch ? 36 : 34));
       if (!touch) {
         ctx.font = `400 11px ${FONT}`;
         ctx.fillStyle = '#9aa3c0';
-        ctx.fillText('ESC = PAUSE', W / 2, 58);
+        ctx.fillText('ESC = PAUSE', W / 2, c.y + 48);
       }
-      for (const b of L.ui) {
+      if (this.showUi) for (const b of L.ui) {
         const hover = this.hover && this.hover.kind === 'ui' && this.hover.id === b.id;
         ctx.fillStyle = hover ? '#343a5c' : '#232842';
         S.rrect(ctx, b.x, b.y, b.w, b.h, 8);
@@ -237,51 +275,51 @@
       const p = s.players[team];
       const T = S.TEAM[team];
       const { x, y, w, h } = box;
-      ctx.fillStyle = 'rgba(14,16,30,0.8)';
+      ctx.fillStyle = 'rgba(14,16,30,0.82)';
       S.rrect(ctx, x, y, w, h, 12);
       ctx.fill();
       ctx.strokeStyle = T.main;
       ctx.lineWidth = 2;
       ctx.stroke();
       ctx.textAlign = 'left';
-      ctx.font = `400 18px ${FONT}`;
+      ctx.font = `400 22px ${FONT}`;
       ctx.fillStyle = T.light;
       const name = opts.names[team];
-      ctx.fillText(name, x + 14, y + 27);
+      ctx.fillText(name, x + 14, y + 30);
       const nw = ctx.measureText(name).width;
-      ctx.font = `400 15px ${FONT}`;
-      ctx.fillStyle = '#c9cde0';
-      ctx.fillText(D.AGES[p.age].name + (p.elite ? ' · Elite ' + p.elite : ''), x + 24 + nw, y + 27);
+      ctx.font = `400 19px ${FONT}`;
+      ctx.fillStyle = '#d6d9ea';
+      ctx.fillText(D.AGES[p.age].name + (p.elite ? ' · Elite ' + p.elite : ''), x + 26 + nw, y + 30);
 
-      coin(ctx, x + 25, y + 52, 10);
-      ctx.font = `400 24px ${FONT}`;
+      coin(ctx, x + 27, y + 58, 12);
+      ctx.font = `400 28px ${FONT}`;
       ctx.fillStyle = '#ffd84a';
-      ctx.fillText(fmt(p.gold), x + 42, y + 61);
+      ctx.fillText(fmt(p.gold), x + 46, y + 68);
 
       const ev = EK.sim.actionInfo(s, team, 'evolve');
-      const bx = x + 196;
-      const bw = w - 210;
+      const bx = x + 178;
+      const bw = w - 192;
       ctx.fillStyle = '#2a2f4a';
-      S.rrect(ctx, bx, y + 40, bw, 22, 7);
+      S.rrect(ctx, bx, y + 42, bw, 28, 8);
       ctx.fill();
       ctx.fillStyle = ev.ready ? '#ffd84a' : '#a78bfa';
-      S.rrect(ctx, bx, y + 40, Math.max(8, bw * ev.progress), 22, 7);
+      S.rrect(ctx, bx, y + 42, Math.max(10, bw * ev.progress), 28, 8);
       ctx.fill();
-      ctx.font = `400 13px ${FONT}`;
+      ctx.font = `400 17px ${FONT}`;
       ctx.textAlign = 'center';
       const need = D.AGES[p.age].xpNext || (ev.max ? 0 : D.AGES[p.age].xpElite);
-      const xpTxt = ev.ready ? (ev.elite ? 'ELITE BEREIT' : 'AUFSTIEG BEREIT') : need ? `XP ${fmt(p.xp)} / ${fmt(need)}` : 'XP MAX';
-      barText(ctx, xpTxt, bx + bw / 2, y + 56);
+      const xpTxt = ev.ready ? (ev.elite ? 'ELITE BEREIT' : 'AUFSTIEG BEREIT') : need ? `XP ${Math.floor(ev.progress * 100)} %` : 'XP MAX';
+      barText(ctx, xpTxt, bx + bw / 2, y + 62);
 
       const r = p.baseHp / p.baseMaxHp;
       ctx.fillStyle = '#2a2f4a';
-      S.rrect(ctx, x + 14, y + 70, w - 28, 17, 6);
+      S.rrect(ctx, x + 14, y + 80, w - 28, 22, 7);
       ctx.fill();
       ctx.fillStyle = r > 0.5 ? '#4ade80' : r > 0.25 ? '#facc15' : '#ef4444';
-      S.rrect(ctx, x + 14, y + 70, Math.max(6, (w - 28) * r), 17, 6);
+      S.rrect(ctx, x + 14, y + 80, Math.max(8, (w - 28) * r), 22, 7);
       ctx.fill();
-      ctx.font = `400 12px ${FONT}`;
-      barText(ctx, `BASIS ${fmt(p.baseHp)} / ${fmt(p.baseMaxHp)}`, x + w / 2, y + 83);
+      ctx.font = `400 16px ${FONT}`;
+      barText(ctx, `BASIS ${fmt(p.baseHp)} / ${fmt(p.baseMaxHp)}`, x + w / 2, y + 97);
     }
 
     drawPanel(s, team, box, opts) {
@@ -375,7 +413,8 @@
     drawButton(s, team, i, rect, opts) {
       const ctx = this.ctx;
       ctx.save();
-      ctx.translate(rect.x, rect.y);
+      const dn = this.denied[team][ACTIONS[i]] || 0;
+      ctx.translate(rect.x + (dn > 0 ? Math.sin(dn * 60) * 3 : 0), rect.y);
       const k = rect.w / BTN;
       ctx.scale(k, k);
       this.drawButtonBody(s, team, i, { x: 0, y: 0, w: BTN, h: BTN }, opts);
@@ -493,6 +532,12 @@
         S.rrect(ctx, r.x, r.y, r.w, r.h, 9);
         ctx.fill();
       }
+      const dn = this.denied[team][action];
+      if (dn > 0) {
+        ctx.fillStyle = `rgba(239,68,68,${Math.min(0.6, dn * 2)})`;
+        S.rrect(ctx, r.x, r.y, r.w, r.h, 9);
+        ctx.fill();
+      }
 
       // Warteschlange: Anzahl dieser Einheit und Fortschritt der vordersten Ausbildung
       if (info.def && info.def.hp) {
@@ -510,9 +555,10 @@
         const head = p.queue[0];
         if (head && head.def.idx === i) {
           ctx.fillStyle = 'rgba(8,10,20,0.7)';
-          ctx.fillRect(r.x + 4, r.y + r.h - 19, r.w - 8, 3);
+          const py = r.y + r.h - (opts.layout === 'touch' ? 21 : 19);
+          ctx.fillRect(r.x + 4, py, r.w - 8, 3);
           ctx.fillStyle = T.light;
-          ctx.fillRect(r.x + 4, r.y + r.h - 19, (r.w - 8) * Math.min(1, head.t / head.def.train), 3);
+          ctx.fillRect(r.x + 4, py, (r.w - 8) * Math.min(1, head.t / head.def.train), 3);
         }
       }
 
@@ -527,8 +573,9 @@
         ctx.fillText(KEY_LABELS[team][i], r.x + 11, r.y + 14.5);
       }
 
-      // Unterzeile: Kosten / Abklingzeit / Status
-      ctx.font = `400 11px ${FONT}`;
+      // Unterzeile: Kosten / Abklingzeit / Status (im Touch-Layout größer)
+      const lf = opts.layout === 'touch' ? 13 : 11;
+      ctx.font = `400 ${lf}px ${FONT}`;
       ctx.textAlign = 'center';
       let label = '';
       let col = '#ffd84a';
@@ -542,8 +589,8 @@
           if (info.max) col = '#c9cde0';
           break;
         case 'sell':
-          label = info.enabled ? '+' + fmt(info.cost) : '—';
-          col = info.enabled ? '#86efac' : '#c9cde0';
+          label = this.isArmed(team, 'sell') ? 'SICHER?' : info.enabled ? '+' + fmt(info.cost) : '—';
+          col = this.isArmed(team, 'sell') ? '#fca5a5' : info.enabled ? '#86efac' : '#c9cde0';
           break;
         case 'evolve':
           label = info.max ? 'MAX' : info.ready ? 'BEREIT' : Math.floor(info.progress * 100) + '%';
@@ -556,8 +603,8 @@
         default:
           label = fmt(info.cost);
       }
-      ctx.fillStyle = 'rgba(8,10,20,0.7)';
-      ctx.fillRect(r.x + 4, r.y + r.h - 15, r.w - 8, 12);
+      ctx.fillStyle = 'rgba(8,10,20,0.75)';
+      ctx.fillRect(r.x + 3, r.y + r.h - lf - 4, r.w - 6, lf + 2);
       ctx.fillStyle = col;
       ctx.fillText(label, cx, r.y + r.h - 5);
     }

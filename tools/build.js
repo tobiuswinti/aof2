@@ -20,11 +20,10 @@ const pick = (re) => {
 };
 const title = pick(/<title>[\s\S]*?<\/title>/);
 const style = pick(/<style>[\s\S]*?<\/style>/);
-const fonts = (html.match(/<link[^>]+fonts\.(googleapis|gstatic)\.com[^>]*>/g) || []).join('\n');
 const body = pick(/<body>[\s\S]*<\/body>/)
   .replace(/^<body>/, '')
   .replace(/<\/body>$/, '');
-const fragment = `${title}\n${style}\n${fonts}\n${body.trim()}\n`;
+const fragment = `${title}\n${style}\n${body.trim()}\n`;
 
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 for (const [name, content] of [
