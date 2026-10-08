@@ -154,3 +154,29 @@ test('KI gegen KI: keine ungültigen Werte, stärkere KI gewinnt', () => {
   }
   assert.ok(wins >= 2, `Normal gewinnt gegen Leicht (${wins}/3)`);
 });
+
+test('Spielstand lässt sich speichern und läuft danach identisch weiter', () => {
+  for (let age = 0; age < D.AGES.length; age++) {
+    const s = sim.createGame({ seed: 50 + age });
+    for (const p of s.players) {
+      p.age = age;
+      p.gold = 1e9;
+      sim.command(s, p.team, 'turret');
+      for (let i = 0; i < 4; i++) sim.command(s, p.team, 'unit' + (i % 3));
+    }
+    run(s, 9);
+    s.players[0].specialCd = 0;
+    sim.command(s, 0, 'special');
+    run(s, 0.4);
+    assert.ok(s.effects.length > 0 || s.projectiles.length > 0, 'Effekte/Geschosse laufen beim Speichern');
+    const copy = sim.deserialize(sim.serialize(s));
+    run(s, 6);
+    run(copy, 6);
+    assert.equal(sim.serialize(copy), sim.serialize(s), `Zeitalter ${age}`);
+  }
+});
+
+test('Ungültiger Spielstand wird abgelehnt', () => {
+  assert.throws(() => sim.deserialize('{"players":[]}'));
+  assert.throws(() => sim.deserialize('kein json'));
+});

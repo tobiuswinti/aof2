@@ -52,7 +52,7 @@
       const ctx = this.ctx;
       this.items = [];
       labels.forEach((label, i) => {
-        const r = { x: W / 2 - w / 2, y: y0 + i * 62, w, h: 50 };
+        const r = { x: W / 2 - w / 2, y: y0 + i * 68, w, h: 58 };
         this.items.push(r);
         const active = i === sel;
         ctx.fillStyle = active ? 'rgba(59,130,246,0.9)' : 'rgba(20,23,42,0.85)';
@@ -61,10 +61,10 @@
         ctx.strokeStyle = active ? '#ffd84a' : '#3b415e';
         ctx.lineWidth = active ? 3 : 1.5;
         ctx.stroke();
-        ctx.font = `400 20px ${FONT}`;
+        ctx.font = `400 22px ${FONT}`;
         ctx.textAlign = 'center';
         ctx.fillStyle = '#f4f1e8';
-        ctx.fillText(label, W / 2, r.y + 32);
+        ctx.fillText(label, W / 2, r.y + 37);
       });
     }
 
@@ -81,16 +81,56 @@
       this.menuList(
         ['2 SPIELER · LOKAL', `1 SPIELER · GEGEN KI  ‹ ${LEVEL_NAMES[opts.level]} ›`, 'STEUERUNG', `MUSIK: ${opts.musicOn ? 'AN' : 'AUS'}`],
         sel,
-        280,
-        460
+        268,
+        520
       );
-      ctx.font = `400 12px ${FONT}`;
-      ctx.fillStyle = 'rgba(230,233,245,0.7)';
-      ctx.fillText('Pfeiltasten + Enter, Maus/Touch oder Gamepad · M = Musik · ESC = Pause', W / 2, 560);
-      ctx.fillText('Eigenständiges Spiel – sämtliche Grafik und Musik wird prozedural im Browser erzeugt.', W / 2, 580);
+      ctx.font = `400 ${opts.touch ? 15 : 13}px ${FONT}`;
+      ctx.fillStyle = 'rgba(230,233,245,0.75)';
+      const hint = opts.touch
+        ? 'Tippe auf einen Eintrag · ‹ › wechselt die KI-Stufe'
+        : 'Pfeiltasten + Enter, Maus/Touch oder Gamepad · M = Musik · ESC = Pause';
+      ctx.fillText(hint, W / 2, 568);
+      ctx.fillText('Eigenständiges Spiel – Grafik und Musik werden im Browser erzeugt.', W / 2, 592);
     }
 
-    drawControls() {
+    // Steuerung für Touch-Geräte: Was die Knöpfe unten am Bildschirmrand tun.
+    drawTouchControls() {
+      const ctx = this.ctx;
+      this.dim(0.84);
+      this.title('SO WIRD GESPIELT', 84, 42);
+      const rows = [
+        ['1 · 2 · 3', 'Einheiten ausbilden: Nahkampf, Fernkampf, schwer. Die Zahl am Knopf zeigt die Warteschlange.'],
+        ['4', 'Spezialangriff – lädt sich nach jedem Einsatz wieder auf.'],
+        ['5', 'Turm kaufen (braucht einen freien Turmplatz).'],
+        ['6', 'Neuen Turmplatz an der Basis bauen (bis zu drei).'],
+        ['7', 'Ältesten Turm verkaufen – Platz frei für einen besseren.'],
+        ['8', 'Ins nächste Zeitalter aufsteigen, sobald der XP-Balken voll ist.'],
+      ];
+      ctx.fillStyle = 'rgba(20,23,42,0.92)';
+      S.rrect(ctx, 150, 112, 980, 380, 16);
+      ctx.fill();
+      rows.forEach((r, i) => {
+        const y = 160 + i * 54;
+        ctx.textAlign = 'center';
+        ctx.font = `400 20px ${FONT}`;
+        ctx.fillStyle = '#ffd84a';
+        ctx.fillText(r[0], 260, y);
+        ctx.textAlign = 'left';
+        ctx.font = `400 18px ${FONT}`;
+        ctx.fillStyle = '#f4f1e8';
+        ctx.fillText(r[1], 350, y);
+      });
+      ctx.textAlign = 'center';
+      ctx.font = `400 17px ${FONT}`;
+      ctx.fillStyle = '#c9cde0';
+      ctx.fillText('Knöpfe von links nach rechts gezählt. Zu zweit: Spieler 1 links unten, Spieler 2 rechts unten.', W / 2, 528);
+      ctx.fillText('Pause oben in der Mitte. Wer zuerst die gegnerische Basis zerstört, gewinnt.', W / 2, 556);
+      this.items = [];
+      this.menuList(['ZURÜCK'], 0, 590, 300);
+    }
+
+    drawControls(opts) {
+      if (opts && opts.touch) return this.drawTouchControls();
       const ctx = this.ctx;
       this.dim(0.82);
       this.title('STEUERUNG', 90, 46);
@@ -140,13 +180,13 @@
       ctx.fillText('Alle Knöpfe lassen sich auch mit Maus oder Touch bedienen – ideal für zwei Spieler an einem Tablet.', W / 2, 580);
       ctx.fillText('Gegen die KI: zusätzlich Zifferntasten 1–8.   ESC = Pause   M = Musik an/aus', W / 2, 604);
       this.items = [];
-      this.menuList(['ZURÜCK'], 0, 630, 260);
+      this.menuList(['ZURÜCK'], 0, 632, 260);
     }
 
     drawPause(sel) {
       this.dim(0.6);
       this.title('PAUSE', 250, 64);
-      this.menuList(['WEITER', 'NEU STARTEN', 'STEUERUNG', 'HAUPTMENÜ'], sel, 300, 360);
+      this.menuList(['WEITER', 'NEU STARTEN', 'STEUERUNG', 'HAUPTMENÜ'], sel, 290, 400);
     }
 
     drawOver(s, sel, opts) {
@@ -158,7 +198,7 @@
       ctx.fillStyle = 'rgba(20,23,42,0.9)';
       S.rrect(ctx, W / 2 - 300, 262, 600, 150, 14);
       ctx.fill();
-      ctx.font = `400 13px ${FONT}`;
+      ctx.font = `400 15px ${FONT}`;
       ctx.textAlign = 'left';
       const rows = [
         ['', opts.names[0], opts.names[1]],
@@ -180,7 +220,7 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = '#c9cde0';
       ctx.fillText(`Spieldauer ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`, W / 2, 436);
-      this.menuList(['REVANCHE', 'HAUPTMENÜ'], sel, 456, 320);
+      this.menuList(['REVANCHE', 'HAUPTMENÜ'], sel, 452, 360);
     }
   }
 

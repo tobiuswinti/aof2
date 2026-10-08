@@ -159,7 +159,34 @@
         for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
         this.nextTime = ctx.currentTime + 0.1;
       }
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      // iOS: auch bei stummgeschaltetem Gerät abspielen (Safari 17+), ein stiller Puffer
+      // innerhalb der Geste schaltet WebAudio zuverlässig frei.
+      try {
+        if (navigator.audioSession) navigator.audioSession.type = 'playback';
+      } catch (e) {
+        /* nicht unterstützt */
+      }
+      if (this.ctx.state !== 'running' && !this.hidden) {
+        const p = this.ctx.resume();
+        if (p && p.catch) p.catch(() => {});
+        try {
+          const src = this.ctx.createBufferSource();
+          src.buffer = this.ctx.createBuffer(1, 1, 22050);
+          src.connect(this.ctx.destination);
+          src.start(0);
+        } catch (e) {
+          /* ignorieren */
+        }
+      }
+    }
+
+    // Seite im Hintergrund: Ton anhalten; beim Zurückkehren fortsetzen.
+    setHidden(hidden) {
+      this.hidden = hidden;
+      if (!this.ctx) return;
+      const p = hidden ? this.ctx.suspend() : this.ctx.resume();
+      if (p && p.catch) p.catch(() => {});
+      if (!hidden) this.nextTime = this.ctx.currentTime + 0.05;
     }
 
     toggleMusic() {

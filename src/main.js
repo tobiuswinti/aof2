@@ -24,7 +24,18 @@
     humans: [false, false],
     names: ['SPIELER 1', 'SPIELER 2'],
     overT: 0,
+    // Touch-Layout: bei grobem Zeiger (Handy/Tablet) oder sobald jemand den Bildschirm antippt.
+    touch: coarsePointer(),
+    keys: false,
   };
+
+  function coarsePointer() {
+    try {
+      return window.matchMedia('(pointer: coarse)').matches;
+    } catch (e) {
+      return false;
+    }
+  }
 
   try {
     const l = localStorage.getItem('ek-level');
@@ -50,6 +61,7 @@
     app.names = vsAI ? ['SPIELER', 'KI · ' + EK.ui.LEVEL_NAMES[app.level].toUpperCase()] : ['SPIELER 1', 'SPIELER 2'];
     app.mode = 'play';
     app.overT = 0;
+    keepAwake();
     renderer.reset();
     renderer.add({ kind: 'banner', x: D.W / 2, y: 330, text: 'KAMPF!', color: '#ffe9a3', life: 1.6 });
   }
@@ -126,6 +138,11 @@
 
   const input = new EK.Input(canvas, {
     unlock: () => sound.unlock(),
+    pointer: (type) => {
+      if (type === 'touch' || type === 'pen') app.touch = true;
+      else if (type === 'mouse' && !coarsePointer()) app.touch = false;
+    },
+    keyboard: () => (app.keys = true),
     action: doAction,
     hover: (h) => (hud.hover = h),
     move: (x, y) => {
@@ -181,25 +198,62 @@
   });
 
   // ------------------------------------------------------------ Größe & Skalierung
-  let scale = 1;
-  let offX = 0;
-  let offY = 0;
-  let dpr = 1;
+  // Die Leinwand füllt ihren Container (respektiert so die Safe-Area-Ränder des Rahmens).
+  // Auf Touch-Geräten im Hochformat wird um 90° gedreht gezeichnet: Das Spiel bleibt
+  // spielbar, auch wenn die App das Drehen des Bildschirms nicht erlaubt.
+  const view = { w: 1, h: 1, dpr: 1, scale: 1, offX: 0, offY: 0, rotated: false };
+  function touchDevice() {
+    try {
+      return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+    } catch (e) {
+      return false;
+    }
+  }
   function resize() {
-    dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
+    const stage = canvas.parentElement;
+    const w = Math.max(1, stage.clientWidth);
+    const h = Math.max(1, stage.clientHeight);
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const rotated = touchDevice() && h > w * 1.05;
+    const lw = rotated ? h : w;
+    const lh = rotated ? w : h;
+    const scale = Math.min(lw / D.W, lh / D.H);
+    Object.assign(view, { w, h, dpr, rotated, scale, offX: (lw - D.W * scale) / 2, offY: (lh - D.H * scale) / 2 });
+    const cw = Math.round(w * dpr);
+    const ch = Math.round(h * dpr);
+    if (canvas.width !== cw || canvas.height !== ch) {
+      canvas.width = cw;
+      canvas.height = ch;
+    }
     canvas.style.width = w + 'px';
     canvas.style.height = h + 'px';
-    scale = Math.min(w / D.W, h / D.H);
-    offX = (w - D.W * scale) / 2;
-    offY = (h - D.H * scale) / 2;
-    input.toLogical = (x, y) => ({ x: (x - offX) / scale, y: (y - offY) / scale });
+    input.toLogical = rotated
+      ? (x, y) => ({ x: (y - view.offX) / view.scale, y: (view.w - view.offY - x) / view.scale })
+      : (x, y) => ({ x: (x - view.offX) / view.scale, y: (y - view.offY) / view.scale });
   }
   window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 150));
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas.parentElement);
   resize();
+
+  // ------------------------------------------------------------ Handy: Hintergrund & Display
+  let wakeLock = null;
+  function keepAwake() {
+    if (wakeLock || document.hidden || !navigator.wakeLock) return;
+    navigator.wakeLock
+      .request('screen')
+      .then((l) => {
+        wakeLock = l;
+        l.addEventListener('release', () => (wakeLock = null));
+      })
+      .catch(() => {});
+  }
+  document.addEventListener('visibilitychange', () => {
+    sound.setHidden(document.hidden);
+    if (document.hidden && app.mode === 'play' && !app.game.over) setMode('pause');
+    if (!document.hidden && app.mode !== 'menu') keepAwake();
+  });
 
   // ------------------------------------------------------------ Schleife
   let last = performance.now();
@@ -250,29 +304,83 @@
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#05060d';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
+    const { dpr, scale, offX, offY } = view;
+    if (view.rotated) ctx.setTransform(0, dpr * scale, -dpr * scale, 0, dpr * (view.w - offY), dpr * offX);
+    else ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offX, dpr * offY);
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, D.W, D.H);
     ctx.clip();
     renderer.drawWorld(s);
-    const opts = { names: app.names, showKeys: app.vsAI ? [true, false] : [true, true], musicOn: sound.musicOn, tooltips: app.mode === 'play' };
+    const keyHints = !app.touch || app.keys;
+    const opts = {
+      names: app.names,
+      layout: app.touch ? 'touch' : 'desktop',
+      humans: app.humans,
+      canFull: !!document.fullscreenEnabled,
+      showKeys: [keyHints && app.humans[0], keyHints && app.humans[1]],
+      musicOn: sound.musicOn,
+      tooltips: app.mode === 'play' && !app.touch,
+    };
     if (app.mode === 'play' || app.mode === 'pause' || app.mode === 'over' || (app.mode === 'controls' && app.back === 'pause')) hud.draw(s, opts);
-    if (app.mode === 'menu') ui.drawMenu(app.sel, { level: app.level, musicOn: sound.musicOn });
-    else if (app.mode === 'controls') ui.drawControls();
+    if (app.mode === 'menu') ui.drawMenu(app.sel, { level: app.level, musicOn: sound.musicOn, touch: app.touch });
+    else if (app.mode === 'controls') ui.drawControls({ touch: app.touch });
     else if (app.mode === 'pause') ui.drawPause(app.sel);
     else if (app.mode === 'over') ui.drawOver(s, app.sel, opts);
     ctx.restore();
     requestAnimationFrame(frame);
   }
 
-  startDemo();
-  const go = () => requestAnimationFrame(frame);
-  if (document.fonts && document.fonts.load) {
-    Promise.race([document.fonts.load('20px "Russo One"'), new Promise((r) => setTimeout(r, 1500))]).then(go, go);
-  } else go();
+  // ------------------------------------------------------------ Start & Live-Update
+  // Wird die Seite neu veröffentlicht, übernimmt der Viewer den Zustand über claude.hot:
+  // Eine laufende Partie geht so nicht verloren (sie startet pausiert).
+  function snapshot() {
+    const inMatch = app.mode === 'play' || app.mode === 'pause' || app.mode === 'over' || (app.mode === 'controls' && app.back === 'pause');
+    return { v: 1, level: app.level, vsAI: app.vsAI, mode: inMatch ? app.mode : 'menu', game: inMatch ? EK.sim.serialize(app.game) : null };
+  }
+
+  function restore(data) {
+    if (!data || data.v !== 1 || !data.game) return false;
+    const game = EK.sim.deserialize(data.game);
+    if (data.level && EK.ai.LEVELS[data.level]) app.level = data.level;
+    app.vsAI = !!data.vsAI;
+    app.game = game;
+    app.ais = [null, app.vsAI ? EK.ai.createAI(1, app.level, (Math.random() * 1e9) | 0) : null];
+    app.humans = [true, !app.vsAI];
+    app.names = app.vsAI ? ['SPIELER', 'KI · ' + EK.ui.LEVEL_NAMES[app.level].toUpperCase()] : ['SPIELER 1', 'SPIELER 2'];
+    setMode(game.over ? 'over' : 'pause');
+    return true;
+  }
+
+  let started = false;
+  function start(data) {
+    if (started) return;
+    started = true;
+    let restored = false;
+    try {
+      restored = restore(data);
+    } catch (e) {
+      restored = false;
+    }
+    if (!restored) startDemo();
+    const go = () => requestAnimationFrame(frame);
+    if (document.fonts && document.fonts.load) {
+      Promise.race([document.fonts.load('20px "Russo One"'), new Promise((r) => setTimeout(r, 1500))]).then(go, go);
+    } else go();
+  }
+
+  const hot = window.claude && window.claude.hot;
+  try {
+    if (hot && hot.snapshot) hot.snapshot(snapshot);
+  } catch (e) {
+    /* Live-Update nicht verfügbar */
+  }
+  if (hot && hot.ready) hot.ready(start);
+  else start((hot && hot.data) || {});
 
   // Für Fehlersuche und automatisierte Browser-Tests
   app.sound = sound;
+  app.view = view;
+  app.toLogicalProbe = (x, y) => input.toLogical(x, y);
   EK.app = app;
 })((globalThis.EK = globalThis.EK || {}));

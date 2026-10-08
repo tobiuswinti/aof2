@@ -50,11 +50,16 @@
       canvas.addEventListener('pointermove', (e) => this.onPointer(e, false));
       canvas.addEventListener('pointerleave', () => this.h.hover(null));
       canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+      // iOS schaltet WebAudio teils erst bei touchend/click frei; Zoom-Gesten unterbinden.
+      for (const ev of ['touchend', 'click']) window.addEventListener(ev, () => this.h.unlock(), { passive: true });
+      for (const ev of ['gesturestart', 'gesturechange', 'dblclick']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+      canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
     }
 
     onKey(e) {
       if (e.repeat) return;
       this.h.unlock();
+      if (this.h.keyboard) this.h.keyboard();
       const code = e.code;
       if (code === 'Escape') {
         this.h.ui('escape');
@@ -92,6 +97,7 @@
     onPointer(e, down) {
       const rect = this.canvas.getBoundingClientRect();
       const p = this.toLogical(e.clientX - rect.left, e.clientY - rect.top);
+      if (this.h.pointer) this.h.pointer(e.pointerType);
       if (down) {
         this.h.unlock();
         e.preventDefault();

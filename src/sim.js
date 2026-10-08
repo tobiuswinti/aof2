@@ -40,9 +40,21 @@
     };
   }
 
+  // Nächste Zufallszahl aus dem im Zustand gespeicherten Mulberry32-Zähler.
+  function attachRand(s) {
+    s.rand = () => {
+      s.rng = (s.rng + 0x6d2b79f5) >>> 0;
+      let t = s.rng;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    return s;
+  }
+
   function createGame(opts) {
     opts = opts || {};
-    return {
+    return attachRand({
       time: 0,
       over: false,
       winner: -1,
@@ -56,8 +68,39 @@
       projectiles: [],
       effects: [],
       events: [],
-      rand: mulberry32(opts.seed != null ? opts.seed : (Date.now() & 0xffffffff)),
-    };
+      // Zufallszustand liegt im Spielzustand, damit er sich speichern lässt.
+      rng: (opts.seed != null ? opts.seed : Date.now() & 0xffffffff) >>> 0,
+      rand: null,
+    });
+  }
+
+  // ---------------------------------------------------------------- Speichern
+
+  // Spielzustand als JSON: Definitionen werden als Schlüssel abgelegt, Sets als Arrays.
+  function serialize(s) {
+    return JSON.stringify(s, function (k, v) {
+      if (k === 'rand' || k === 'events') return undefined;
+      if (k === 'def' && v && typeof v === 'object') {
+        if (v.look) return { unitKey: v.key };
+        if (v.kind) return { specialAge: v.age };
+      }
+      if (v instanceof Set) return { setOf: Array.from(v) };
+      return v;
+    });
+  }
+
+  function deserialize(json) {
+    const s = JSON.parse(json, function (k, v) {
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        if (Array.isArray(v.setOf)) return new Set(v.setOf);
+        if (k === 'def' && v.unitKey != null) return D.unitDef(Math.floor(v.unitKey / 10), v.unitKey % 10);
+        if (k === 'def' && v.specialAge != null) return D.specialDef(v.specialAge);
+      }
+      return v;
+    });
+    if (!s || !Array.isArray(s.players) || s.players.length !== 2 || !Array.isArray(s.units)) throw new Error('Ungültiger Spielstand');
+    s.events = [];
+    return attachRand(s);
   }
 
   function emit(s, ev) {
@@ -777,6 +820,8 @@
     update,
     command,
     actionInfo,
+    serialize,
+    deserialize,
     mulberry32,
   };
 })((globalThis.EK = globalThis.EK || {}));
