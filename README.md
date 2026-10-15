@@ -28,6 +28,23 @@ drin – ideal zum Weitergeben. Zusätzlich entsteht `dist/artifact.html` (Seite
 **Variante 4 – GitHub Pages:** In den Repository-Einstellungen unter *Pages* „Deploy from a branch“ mit
 dem Ordner `/ (root)` wählen – `index.html` liegt bereits im Hauptverzeichnis.
 
+## Online-Duell
+
+Zwei Spieler auf verschiedenen Geräten treten gegeneinander an – jeder sieht seine eigene Basis **links**
+und den Gegner rechts (die Ansicht des Gasts ist gespiegelt).
+
+1. Beide öffnen die veröffentlichte Seite in Claude (der Link muss mit dem Gegner geteilt sein).
+2. Einer tippt **Online-Duell → Spiel eröffnen**, der andere sieht das Spiel in seiner Lobby und tippt
+   **Beitreten**.
+3. Pause hält die Partie für beide an, „Aufgeben“ beendet sie, nach dem Ende startet **Revanche** eine
+   neue Runde, sobald beide sie wollen.
+
+Technik: Beide Geräte rechnen dieselbe deterministische Partie (Lockstep). Übertragen werden nur die
+Befehle mit dem Tick, an dem sie gelten – über die Presence der `room`-Fähigkeit des claude.ai-Viewers,
+die jeder Eingeladene setzen darf. Prüfsummen erkennen Abweichungen; dann oder nach einem Neuladen wird
+der Spielstand komprimiert in Teilen übertragen („Online-Partie fortsetzen“). Außerhalb des claude.ai-
+Viewers (z. B. als lokale Datei) ist das Online-Duell nicht verfügbar.
+
 ## Am Handy oder Tablet
 
 - Hochformat und Querformat funktionieren. Im Hochformat wird das Spiel automatisch gedreht dargestellt –
@@ -88,6 +105,8 @@ dem Ordner `/ (root)` wählen – `index.html` liegt bereits im Hauptverzeichnis
 index.html        Einstieg (lädt die Skripte der Reihe nach)
 src/data.js       Zeitalter, Einheiten, Türme, Spezialangriffe, Balancing-Werte
 src/sim.js        Deterministische Spielsimulation (ohne DOM, testbar in Node)
+src/net.js        Lockstep für das Online-Duell (Befehle, Prüfsummen, Spielstand-Übertragung)
+src/online.js     Lobby und Spielräume über die room-Fähigkeit des claude.ai-Viewers
 src/ai.js         Computergegner (nutzt dieselben Befehle wie Menschen)
 src/sprites.js    Prozedurale Vektorgrafik: Figuren, Reittiere, Fahrzeuge, Basen, Türme
 src/render.js     Hintergründe je Epoche, Geschosse, Effekte, Partikel
@@ -96,7 +115,7 @@ src/ui.js         Menü, Steuerung, Pause, Siegbildschirm
 src/audio.js      Musik-Sequenzer mit generierten Melodien + synthetisierte Soundeffekte
 src/input.js      Tastatur, Maus/Touch, Gamepads
 src/main.js       Spielschleife mit festem Zeitschritt, Zustandsautomat
-tests/            Tests der Spiellogik (node --test)
+tests/            Tests der Spiellogik und des Online-Lockstep (node --test)
 tools/build.js    Baut die Einzeldatei-Version nach dist/
 tools/balance.js  Lässt KI gegen KI spielen und gibt Kennzahlen zum Balancing aus
 ```
