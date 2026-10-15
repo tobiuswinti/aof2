@@ -72,29 +72,38 @@
       ctx.fillText(text, W / 2, y);
     }
 
-    listHeight(items) {
+    listHeight(items, step) {
       const big = items.filter((it) => it.kind !== 'small').length;
       const small = items.some((it) => it.kind === 'small');
-      return big * ROW_STEP + (small ? SMALL_H + 10 : 0);
+      return big * (step || ROW_STEP) + (small ? SMALL_H + 10 : 0);
+    }
+
+    // Zeilenabstand so wählen, dass die Liste in die verfügbare Höhe passt.
+    fitStep(items, avail) {
+      const big = items.filter((it) => it.kind !== 'small').length || 1;
+      const small = items.some((it) => it.kind === 'small') ? SMALL_H + 10 : 0;
+      return Math.max(52, Math.min(ROW_STEP, Math.floor((avail - small) / big)));
     }
 
     // Zeichnet die Einträge ab y0 und merkt sich ihre Flächen für hit().
-    drawItems(items, sel, y0, w) {
+    drawItems(items, sel, y0, w, step) {
       const ctx = this.ctx;
+      step = step || ROW_STEP;
+      const rowH = step - 10;
       this.rects = [];
       let y = y0;
       const smalls = items.filter((it) => it.kind === 'small');
       const sw = Math.min(190, (w - (smalls.length - 1) * 12) / Math.max(1, smalls.length));
       let sx = W / 2 - (smalls.length * sw + (smalls.length - 1) * 12) / 2;
-      const sy = y0 + (items.length - smalls.length) * ROW_STEP;
+      const sy = y0 + (items.length - smalls.length) * step;
       items.forEach((it, i) => {
         let r;
         if (it.kind === 'small') {
           r = { x: sx, y: sy, w: sw, h: SMALL_H };
           sx += sw + 12;
         } else {
-          r = { x: W / 2 - w / 2, y, w, h: ROW_H };
-          y += ROW_STEP;
+          r = { x: W / 2 - w / 2, y, w, h: rowH };
+          y += step;
         }
         this.rects.push(r);
         const active = i === sel;
@@ -115,7 +124,7 @@
             ctx.fill();
             ctx.font = `400 34px ${FONT}`;
             ctx.fillStyle = '#ffd84a';
-            ctx.fillText(side < 0 ? '‹' : '›', ax + 42, r.y + 40);
+            ctx.fillText(side < 0 ? '‹' : '›', ax + 42, r.y + r.h / 2 + 12);
           }
           ctx.fillStyle = '#f4f1e8';
         }
@@ -128,8 +137,9 @@
       this.time += 1 / 60;
       const ctx = this.ctx;
       this.dim(0.45);
-      const listH = this.listHeight(items);
       const footH = opts.touch ? 34 : 60;
+      const step = this.fitStep(items, area.h - (70 + 36 + footH + 16));
+      const listH = this.listHeight(items, step);
       const blockH = 70 + 36 + listH + footH;
       const y0 = area.top + Math.max(6, (area.h - blockH) / 2);
       const bob = Math.sin(this.time * 1.5) * 3;
@@ -139,7 +149,7 @@
       ctx.textAlign = 'center';
       ctx.fillText('Duell durch sechs Zeitalter – von der Steinzeit bis in die Zukunft', W / 2, y0 + 96);
       const ly = y0 + 112;
-      this.drawItems(items, sel, ly, 560);
+      this.drawItems(items, sel, ly, 560, step);
       ctx.font = `400 ${opts.touch ? 17 : 14}px ${FONT}`;
       ctx.fillStyle = 'rgba(230,233,245,0.8)';
       ctx.textAlign = 'center';
@@ -233,6 +243,45 @@
       this.drawItems(items, sel, 618, 260);
     }
 
+    // Online-Lobby: Status, offene Spiele, Eröffnen/Beitreten
+    drawLobby(items, sel, area, lines) {
+      const ctx = this.ctx;
+      this.dim(0.66);
+      const step = this.fitStep(items, area.h - (60 + 24 + lines.length * 28 + 30));
+      const listH = this.listHeight(items, step);
+      const blockH = 60 + 24 + lines.length * 28 + 14 + listH;
+      const y0 = area.top + Math.max(6, (area.h - blockH) / 2);
+      this.title('ONLINE-DUELL', y0 + 50, 50);
+      ctx.font = `400 19px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#e6e9f5';
+      lines.forEach((l, i) => ctx.fillText(l, W / 2, y0 + 92 + i * 28));
+      this.drawItems(items, sel, y0 + 92 + lines.length * 28 + 4, 600, step);
+    }
+
+    // Hinweis über dem laufenden Spiel, wenn die Online-Partie wartet
+    drawWaiting(area, text) {
+      const ctx = this.ctx;
+      const y = area.top + area.h * 0.42;
+      ctx.fillStyle = 'rgba(10,12,26,0.82)';
+      S.rrect(ctx, W / 2 - 330, y - 46, 660, text[1] ? 92 : 64, 14);
+      ctx.fill();
+      ctx.strokeStyle = '#ffd84a';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.font = `400 26px ${FONT}`;
+      ctx.fillStyle = '#f4f1e8';
+      const dots = '.'.repeat(1 + (Math.floor(this.time * 3) % 3));
+      this.time += 1 / 60;
+      ctx.fillText(text[0].replace(/ …$/, ' ' + dots), W / 2, y - 6);
+      if (text[1]) {
+        ctx.font = `400 18px ${FONT}`;
+        ctx.fillStyle = '#c9cde0';
+        ctx.fillText(text[1], W / 2, y + 28);
+      }
+    }
+
     drawPause(items, sel, area) {
       this.dim(0.6);
       const listH = this.listHeight(items);
@@ -248,7 +297,7 @@
       const y0 = area.top + Math.max(6, (area.h - (66 + 168 + 34 + listH)) / 2);
       const w = s.winner;
       const T = S.TEAM[w] || S.TEAM[0];
-      this.title(w === 0 || w === 1 ? `${opts.names[w]} GEWINNT!` : 'SPIELENDE', y0 + 52, 54, T.light);
+      this.title(opts.overTitle || (w === 0 || w === 1 ? `${opts.names[w]} GEWINNT!` : 'SPIELENDE'), y0 + 52, 54, T.light);
       const ty = y0 + 66;
       ctx.fillStyle = 'rgba(20,23,42,0.9)';
       S.rrect(ctx, W / 2 - 320, ty, 640, 160, 14);

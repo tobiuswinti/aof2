@@ -60,7 +60,12 @@
     saved: load('ek-save'),
     pressed: null,
     quality: 0, // 0 = volle Qualität … 3 = sparsamste Darstellung
+    // Online-Duell: Lobby/Verbindung (online) und laufende Lockstep-Partie (net)
+    online: new EK.Online(),
+    net: null,
+    netWaitSince: 0,
   };
+  app.onlineSaved = app.online.savedGame();
   // Nur echte Stufen akzeptieren (z. B. kein 'constructor' aus manipuliertem Speicher).
   function validLevel(l) {
     return typeof l === 'string' && Object.prototype.hasOwnProperty.call(EK.ai.LEVELS, l);
@@ -70,6 +75,36 @@
 
   function inMatch() {
     return app.mode === 'play' || app.mode === 'pause' || app.mode === 'over' || (app.mode === 'controls' && app.back === 'pause');
+  }
+
+  // ------------------------------------------------------------ Online
+  // Eine neue Online-Partie (oder Runde) beginnt – auch nach Neuladen/Live-Update.
+  function enterOnline(ls) {
+    app.net = ls;
+    app.vsAI = false;
+    app.game = ls.s;
+    app.ais = [null, null];
+    app.humans = [ls.team === 0, ls.team === 1];
+    app.names = onlineNames();
+    app.overT = 0;
+    app.onlineSaved = null;
+    renderer.mirror = ls.team === 1; // eigene Basis immer links
+    renderer.reset();
+    setMode('play');
+    renderer.add({ kind: 'banner', x: D.W / 2, y: 330, text: 'KAMPF!', color: '#ffe9a3', life: 1.6 });
+  }
+  app.online.onStart = enterOnline;
+
+  function onlineNames() {
+    const opp = app.online.oppName().toUpperCase();
+    return app.net && app.net.team === 1 ? [opp, 'DU'] : ['DU', opp];
+  }
+
+  // Online-Partie verlassen (Lobby-Raum bleibt verbunden).
+  function endOnline() {
+    if (app.net || app.online.game) app.online.leave();
+    app.net = null;
+    renderer.mirror = false;
   }
 
   // ------------------------------------------------------------ Partien
@@ -86,6 +121,7 @@
   }
 
   function startGame(vsAI) {
+    endOnline();
     discardSave();
     app.vsAI = vsAI;
     const lvl = EK.ai.LEVELS[app.level];
@@ -100,6 +136,7 @@
   }
 
   function toMenu() {
+    endOnline();
     discardSave();
     setMode('menu');
     startDemo();
@@ -110,6 +147,8 @@
     app.sel = 0;
     app.confirm = null;
     app.pressed = null;
+    // Online: eigene Pause hält die gemeinsame Partie an (der Gegner sieht das).
+    if (app.net) app.net.paused = m === 'pause' || (m === 'controls' && app.back === 'pause');
     if (m === 'over') discardSave();
     syncWakeLock();
   }
@@ -131,6 +170,8 @@
       team = app.humans[0] ? 0 : 1;
     }
     if (src === 'pad' && app.vsAI) team = 0;
+    // Online steuert jede Taste/jeder Knopf das eigene Team.
+    if (app.net && (src === 'key' || src === 'pad')) team = app.net.team;
     if (!app.humans[team]) return;
     // Verkaufen per Touch braucht ein zweites Tippen (liegt direkt neben „Aufsteigen“).
     if (action === 'sell' && src === 'touch' && !hud.isArmed(team, 'sell') && EK.sim.actionInfo(app.game, team, 'sell').enabled) {
@@ -140,6 +181,11 @@
     }
     hud.disarm(team, 'sell');
     hud.press(team, action);
+    if (app.net) {
+      // Online: Befehl wird mit Vorlauf eingeplant; Ablehnungen meldet später die Simulation.
+      if (!app.net.local(action)) hud.deny(team, action);
+      return;
+    }
     if (!EK.sim.command(app.game, team, action)) {
       hud.deny(team, action);
       if (src === 'touch') vibrate(25);
@@ -187,16 +233,29 @@
     switch (app.mode) {
       case 'menu':
         return [
+          app.onlineSaved && { id: 'onlineResume', kind: 'big', label: 'ONLINE-PARTIE FORTSETZEN' },
           app.saved && { id: 'continue', kind: 'big', label: 'PARTIE FORTSETZEN' },
+          { id: 'online', kind: 'big', label: 'ONLINE-DUELL' },
           { id: 'p2', kind: 'big', label: '2 SPIELER · LOKAL' },
           { id: 'ai', kind: 'big', label: '1 SPIELER · GEGEN KI' },
           { id: 'level', kind: 'level', label: 'KI-STUFE: ' + EK.ui.LEVEL_NAMES[app.level].toUpperCase() },
-          { id: 'controls', kind: 'big', label: 'STEUERUNG' },
-          ...opts,
+          opts[0],
+          { id: 'controls', kind: 'small', label: 'HILFE' },
+          ...opts.slice(1),
         ].filter(Boolean);
+      case 'lobby':
+        return lobbyItems();
       case 'pause':
+        if (app.net) return [{ id: 'resume', kind: 'big', label: 'WEITER' }, { id: 'controls', kind: 'big', label: 'STEUERUNG' }, confirmItem('resign', 'AUFGEBEN'), ...opts].filter(Boolean);
         return [{ id: 'resume', kind: 'big', label: 'WEITER' }, confirmItem('restart', 'NEU STARTEN'), { id: 'controls', kind: 'big', label: 'STEUERUNG' }, confirmItem('quit', 'HAUPTMENÜ'), ...opts].filter(Boolean);
       case 'over':
+        if (app.net) {
+          const opp = app.online.opp;
+          return [
+            app.online.rematch ? { id: 'wait', kind: 'big', label: 'WARTE AUF ' + app.online.oppName().toUpperCase() + ' …' } : { id: 'again', kind: 'big', label: opp ? 'REVANCHE' : 'GEGNER IST WEG' },
+            { id: 'quit', kind: 'big', label: 'HAUPTMENÜ' },
+          ];
+        }
         return [
           { id: 'again', kind: 'big', label: 'REVANCHE' },
           { id: 'quit', kind: 'big', label: 'HAUPTMENÜ' },
@@ -205,6 +264,51 @@
         return [{ id: 'back', kind: 'big', label: 'ZURÜCK' }];
     }
     return [];
+  }
+
+  // Lobby: je nach Verbindungszustand eröffnen, beitreten, warten, abbrechen.
+  function lobbyItems() {
+    const o = app.online;
+    switch (o.state) {
+      case 'lobby': {
+        const games = o.openGames().slice(0, 3);
+        return [{ id: 'host', kind: 'big', label: 'SPIEL ERÖFFNEN' }, ...games.map((p) => ({ id: 'join', peer: p, kind: 'big', label: 'BEITRETEN · ' + o.nameOf(p).toUpperCase() })), { id: 'lobbyBack', kind: 'big', label: 'ZURÜCK' }];
+      }
+      case 'hosting':
+      case 'joining':
+        return [{ id: 'cancel', kind: 'big', label: 'ABBRECHEN' }];
+      default:
+        return [{ id: 'lobbyBack', kind: 'big', label: 'ZURÜCK' }];
+    }
+  }
+
+  function lobbyInfo() {
+    const o = app.online;
+    switch (o.state) {
+      case 'idle':
+      case 'connecting':
+        return ['Verbinde mit der Lobby …'];
+      case 'unavailable':
+        return ['Online spielen geht nur in der veröffentlichten Seite in Claude –', 'für alle, mit denen sie geteilt ist. Beide öffnen den Link.'];
+      case 'lobby': {
+        const n = o.others().length;
+        const games = o.openGames().length;
+        return [
+          n ? `In der Lobby: du und ${n} weitere${n === 1 ? 'r' : ''}` : 'Noch niemand sonst in der Lobby – teile den Link mit deinem Gegner.',
+          games ? 'Tritt einem offenen Spiel bei oder eröffne ein eigenes.' : 'Eröffne ein Spiel – dein Gegner sieht es hier und tritt bei.',
+        ];
+      }
+      case 'hosting':
+        return ['Dein Spiel ist eröffnet – warte auf einen Gegner …', 'Wer die Seite gerade offen hat, sieht es in seiner Lobby.'];
+      case 'joining':
+        return ['Verbinde mit dem Spiel …'];
+    }
+    return [];
+  }
+
+  function openLobby() {
+    setMode('lobby');
+    app.online.init();
   }
 
   // Bestätigungspflichtige Einträge: erstes Auslösen schärft, zweites (binnen 3 s) führt aus.
@@ -246,12 +350,39 @@
       case 'resume':
         return setMode('play');
       case 'again':
+        if (app.net) return app.online.opp ? app.online.requestRematch() : undefined;
         return startGame(app.vsAI);
       case 'restart':
         if (!needsConfirm('restart')) startGame(app.vsAI);
         return;
       case 'quit':
         if (app.mode === 'over' || !needsConfirm('quit')) toMenu();
+        return;
+      case 'online':
+        return openLobby();
+      case 'onlineResume': {
+        const saved = app.onlineSaved;
+        app.onlineSaved = null;
+        setMode('lobby');
+        app.online.resume(saved);
+        return;
+      }
+      case 'host':
+        return app.online.host();
+      case 'join':
+        return app.online.join(item.peer);
+      case 'cancel':
+        return app.online.leave();
+      case 'lobbyBack':
+        if (app.online.game) app.online.leave();
+        return setMode('menu');
+      case 'resign':
+        if (!needsConfirm('resign')) {
+          app.online.resign();
+          setMode('play');
+        }
+        return;
+      case 'wait':
         return;
     }
   }
@@ -268,6 +399,8 @@
       tooltips: app.mode === 'play' && !app.touch,
       showUi: app.mode === 'play',
       top: view.top,
+      mirror: !!(app.net && app.net.team === 1),
+      keyRow: app.net ? [0, 0] : null, // online: beide Seiten zeigen Q W E …
     };
   }
 
@@ -333,6 +466,7 @@
         else if (app.mode === 'pause') setMode('play');
         else if (app.mode === 'controls') activate({ id: 'back' });
         else if (app.mode === 'over') toMenu();
+        else if (app.mode === 'lobby') activate({ id: 'lobbyBack' });
         return true;
       }
       if (app.mode === 'play') return false;
@@ -477,7 +611,7 @@
   }
 
   function persist() {
-    if (!inMatch()) return;
+    if (!inMatch() || app.net) return;
     // Eine entschiedene Partie darf nicht fortsetzbar bleiben.
     if (app.game.over) return discardSave();
     try {
@@ -509,6 +643,16 @@
 
   // ------------------------------------------------------------ Spielstand: Live-Update & Sicherung
   function snapshot() {
+    if (app.net) {
+      // Online: Lockstep-Zustand mitgeben; nach dem Neuladen geht es im selben Raum weiter.
+      let online = null;
+      try {
+        online = app.online.snapshot();
+      } catch (e) {
+        online = null;
+      }
+      return { v: STATE_V, level: app.level, flip: app.flip, mode: 'menu', game: null, online };
+    }
     return {
       v: STATE_V,
       level: app.level,
@@ -589,16 +733,35 @@
     if (rawMs > 0 && rawMs < 100) frameEma = frameEma * 0.9 + rawMs * 0.1;
     input.pollGamepads();
 
-    const s = app.game;
-    const running = app.mode === 'play' || app.mode === 'menu' || (app.mode === 'controls' && app.back === 'menu');
-    if (running) {
+    let s = app.game;
+    const running = app.mode === 'play' || app.mode === 'menu' || app.mode === 'lobby' || (app.mode === 'controls' && app.back === 'menu');
+    if (app.net) {
+      // Online: Lobby/Raum pflegen und die Lockstep-Partie so weit rechnen, wie beide Seiten bestätigt haben.
+      app.online.update();
+      const net = app.net;
+      if (app.game !== net.s) app.game = s = net.s; // nach einer Spielstand-Übertragung
+      if (app.mode === 'play') app.names = onlineNames();
+      acc += dt;
+      let due = Math.floor(acc / STEP);
+      if (net.oppTick > net.tick + 2) due += 2; // zurückgefallen: aufholen
+      const ran = net.step(Math.min(due, 8));
+      acc = Math.max(0, acc - ran * STEP);
+      if (acc > STEP * 3) acc = STEP * 3; // beim Warten nicht ansammeln
+      if (net.stalled()) {
+        if (!app.netWaitSince) app.netWaitSince = now;
+      } else app.netWaitSince = 0;
+      for (const ev of s.events) if (ev.type === 'deny' && ev.team === net.team && ev.action) hud.deny(ev.team, ev.action);
+    } else if (app.online.game || app.online.state === 'hosting' || app.online.state === 'joining') {
+      app.online.update();
+    }
+    if (!app.net && running) {
       acc += dt;
       while (acc >= STEP) {
         for (const ai of app.ais) if (ai) EK.ai.updateAI(ai, s, STEP);
         EK.sim.update(s, STEP);
         acc -= STEP;
       }
-    } else acc = 0;
+    } else if (!app.net) acc = 0;
 
     renderer.handleEvents(s.events, s);
     if (app.mode === 'play') sound.handleEvents(s.events, app.humans);
@@ -629,7 +792,7 @@
 
     // Musik
     if (app.mode === 'over' || (app.mode === 'play' && s.over)) sound.setTheme('victory');
-    else if (app.mode === 'menu' || (app.mode === 'controls' && app.back === 'menu')) sound.setTheme('menu');
+    else if (app.mode === 'menu' || app.mode === 'lobby' || (app.mode === 'controls' && app.back === 'menu')) sound.setTheme('menu');
     else sound.setTheme(Math.max(s.players[0].age, s.players[1].age));
     sound.update();
 
@@ -652,6 +815,18 @@
     draw(s);
   }
 
+  // Warum die Online-Partie gerade steht
+  function waitText() {
+    const net = app.net;
+    const o = app.online;
+    const gone = o.oppMissing();
+    if (net.need) return ['Spielstand wird übertragen …', net.recv ? `Teil ${net.recv.have} von ${net.recv.n}` : 'Warte auf den Gegner'];
+    if (net.out) return ['Übertrage Spielstand an ' + o.oppName() + ' …', ''];
+    if (gone > 1500) return [o.oppName() + ' ist nicht verbunden', gone > 20000 ? 'Warte weiter oder gib im Pausenmenü auf' : 'Warte auf Wiederverbindung …'];
+    if (net.oppPaused) return [o.oppName() + ' hat pausiert', ''];
+    return ['Warte auf ' + o.oppName() + ' …', ''];
+  }
+
   function draw(s) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#05060d';
@@ -669,10 +844,15 @@
     const items = menuItems();
     if (app.sel >= items.length) app.sel = Math.max(0, items.length - 1);
     const area = { top: view.top, h: view.vh };
+    if (app.mode === 'play' && app.net && app.netWaitSince && performance.now() - app.netWaitSince > 400) ui.drawWaiting(area, waitText());
     if (app.mode === 'menu') ui.drawMenu(items, app.sel, area, { touch: app.touch });
+    else if (app.mode === 'lobby') ui.drawLobby(items, app.sel, area, lobbyInfo());
     else if (app.mode === 'controls') ui.drawControls(items, app.sel, area, { touch: app.touch, drawButton: (i, r) => hud.drawButton(s, 0, i, r, opts) });
     else if (app.mode === 'pause') ui.drawPause(items, app.sel, area);
-    else if (app.mode === 'over') ui.drawOver(s, items, app.sel, area, opts);
+    else if (app.mode === 'over') {
+      if (app.net) opts.overTitle = s.winner === app.net.team ? 'SIEG!' : 'NIEDERLAGE';
+      ui.drawOver(s, items, app.sel, area, opts);
+    }
     ctx.restore();
   }
 
@@ -690,6 +870,10 @@
       restored = false;
     }
     if (!restored) startDemo();
+    // Laufende Online-Partie nach einem Live-Update fortsetzen (asynchron, sobald verbunden)
+    if (data && data.v === STATE_V && data.online && data.online.ls) {
+      app.online.restore(data.online).catch(() => {});
+    }
     resize();
     requestAnimationFrame(frame);
   }
@@ -714,6 +898,7 @@
   app.sound = sound;
   app.view = view;
   app.ui = ui;
+  app.items = () => menuItems();
   app.hud = hud;
   app.toLogicalProbe = (x, y) => input.toLogical(x, y);
   EK.app = app;

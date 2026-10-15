@@ -225,8 +225,19 @@
         ok = evolve(s, p);
         break;
     }
-    if (!ok) emit(s, { type: 'deny', team });
+    if (!ok) emit(s, { type: 'deny', team, action });
     return ok;
+  }
+
+  // Aufgeben: Die eigene Basis fällt sofort, der Gegner gewinnt.
+  function resign(s, team) {
+    if (s.over) return false;
+    const p = s.players[team];
+    p.baseHp = 0;
+    s.over = true;
+    s.winner = 1 - team;
+    emit(s, { type: 'win', team: 1 - team });
+    return true;
   }
 
   function orderUnit(s, p, idx) {
@@ -405,7 +416,10 @@
   function launch(s, opts) {
     const pt = D.PROJ[opts.type];
     const dx = opts.tx - opts.sx;
-    const dist = Math.hypot(dx, opts.ty - opts.sy);
+    // Math.sqrt statt Math.hypot: sqrt rundet in jeder JS-Engine identisch – wichtig, damit
+    // Online-Partien (Lockstep) auf iPhone und Android exakt gleich verlaufen.
+    const dy = opts.ty - opts.sy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
     const T = Math.max(opts.type === 'laser' ? 0.07 : 0.05, dist / pt.speed);
     s.projectiles.push({
       type: opts.type,
@@ -846,6 +860,7 @@
     update,
     command,
     actionInfo,
+    resign,
     serialize,
     deserialize,
     mulberry32,

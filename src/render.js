@@ -887,13 +887,17 @@
           }
           case 'text':
             ctx.globalAlpha = Math.min(1, f * 2);
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            if (this.mirror) ctx.scale(-1, 1); // Schrift im gespiegelten Feld lesbar halten
             ctx.font = `700 ${p.size}px "Russo One", "Trebuchet MS", sans-serif`;
             ctx.textAlign = 'center';
             ctx.lineWidth = 3;
             ctx.strokeStyle = 'rgba(20,16,10,0.8)';
-            ctx.strokeText(p.text, p.x, p.y);
+            ctx.strokeText(p.text, 0, 0);
             ctx.fillStyle = p.color;
-            ctx.fillText(p.text, p.x, p.y);
+            ctx.fillText(p.text, 0, 0);
+            ctx.restore();
             break;
           case 'banner': {
             const t = 1 - f;
@@ -901,7 +905,7 @@
             ctx.globalAlpha = Math.min(1, f * 3);
             ctx.save();
             ctx.translate(p.x, p.y);
-            ctx.scale(sc, sc);
+            ctx.scale(this.mirror ? -sc : sc, sc);
             ctx.font = '400 40px "Russo One", "Trebuchet MS", sans-serif';
             ctx.textAlign = 'center';
             ctx.lineWidth = 6;
@@ -923,6 +927,11 @@
       this.setEra(era);
       ctx.save();
       if (this.shake > 0) ctx.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake);
+      // Online als Gast: Feld spiegeln, damit die eigene Basis links steht.
+      if (this.mirror) {
+        ctx.translate(W, 0);
+        ctx.scale(-1, 1);
+      }
       this.drawBackground();
       this.drawBases(s);
       this.drawUnits(s);

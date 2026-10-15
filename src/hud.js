@@ -34,14 +34,16 @@
   // Berechnet alle Flächen des HUD. top = oberer Rand des sichtbaren Bereichs (auf breiten
   // Handys wird oben Himmel abgeschnitten, damit alles größer dargestellt werden kann).
   // Jede Knopf-Fläche hat zusätzlich eine Trefferfläche (hit), die Lücken mit abdeckt.
-  function layout(mode, humans, canFull, top) {
+  // mirror: Online als Gast – eigene Tafel (Team 1) links, Gegner rechts.
+  function layout(mode, humans, canFull, top, mirror) {
     top = top || 0;
+    const side = (t) => (mirror ? 1 - t : t);
     const L = { mode, top, panels: [], buttons: [null, null], center: null, ui: [] };
     const withHit = (r, h) => Object.assign(r, { hit: h || r });
     if (mode !== 'touch') {
       const ids = canFull ? ['pause', 'music', 'full'] : ['pause', 'music'];
       for (let team = 0; team < 2; team++) {
-        const x = panelX(team);
+        const x = panelX(side(team));
         L.panels.push({ x, y: top + 10, w: PANEL_W, h: PANEL_H });
         L.buttons[team] = ACTIONS.map((a, i) => withHit({ x: x + 12 + i * (BTN + GAP), y: top + 46, w: BTN, h: BTN }));
       }
@@ -51,7 +53,8 @@
       return L;
     }
     // Touch: oben kompakte Infotafeln und ein großer Pause-Knopf (Musik/Vollbild im Pausenmenü)
-    L.panels.push({ x: 8, y: top + 8, w: 452, h: 112 }, { x: W - 460, y: top + 8, w: 452, h: 112 });
+    const px = [8, W - 460];
+    L.panels.push({ x: px[side(0)], y: top + 8, w: 452, h: 112 }, { x: px[side(1)], y: top + 8, w: 452, h: 112 });
     L.center = { x: W / 2 - 84, y: top + 8, w: 168, h: 112 };
     L.ui.push(withHit({ id: 'pause', x: W / 2 - 60, y: top + 50, w: 120, h: 62 }, { x: W / 2 - 84, y: top, w: 168, h: 124 }));
     const hs = [0, 1].filter((t) => humans[t]);
@@ -162,7 +165,7 @@
 
     // Layout vorab aktualisieren (z. B. wenn der erste Fingertipp vom Maus- ins Touch-Layout wechselt).
     relayout(opts) {
-      this.L = layout(opts.layout, opts.humans, opts.canFull, opts.top);
+      this.L = layout(opts.layout, opts.humans, opts.canFull, opts.top, opts.mirror);
     }
 
     update(dt) {
@@ -172,7 +175,7 @@
 
     draw(s, opts) {
       const ctx = this.ctx;
-      const L = (this.L = layout(opts.layout, opts.humans, opts.canFull, opts.top));
+      const L = (this.L = layout(opts.layout, opts.humans, opts.canFull, opts.top, opts.mirror));
       this.showUi = opts.showUi !== false;
       const touch = L.mode === 'touch';
       for (let team = 0; team < 2; team++) {
@@ -570,7 +573,7 @@
         ctx.font = `400 11px ${FONT}`;
         ctx.textAlign = 'center';
         ctx.fillStyle = '#e6e9f5';
-        ctx.fillText(KEY_LABELS[team][i], r.x + 11, r.y + 14.5);
+        ctx.fillText(KEY_LABELS[opts.keyRow ? opts.keyRow[team] : team][i], r.x + 11, r.y + 14.5);
       }
 
       // Unterzeile: Kosten / Abklingzeit / Status (im Touch-Layout größer)
@@ -628,7 +631,7 @@
       ctx.font = `400 13px ${FONT}`;
       const box = this.L.panels[team];
       const w = ctx.measureText(text).width + 24;
-      const x = Math.max(10, Math.min(W - 10 - w, box.x + (team === 0 ? 0 : box.w - w)));
+      const x = Math.max(10, Math.min(W - 10 - w, box.x + (box.x < W / 2 ? 0 : box.w - w)));
       const y = box.y + box.h + 8;
       ctx.fillStyle = 'rgba(14,16,30,0.92)';
       S.rrect(ctx, x, y, w, 26, 8);
